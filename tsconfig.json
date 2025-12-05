@@ -19,18 +19,7 @@
     "skipLibCheck": true,
     "moduleResolution": "node",
     "resolveJsonModule": true,
-    "allowSyntheticDefaultImports": true,
-    "baseUrl": ".",
-    "paths": {
-      "react": [
-        "../../node_modules/@types/react",
-        "./node_modules/@types/react"
-      ],
-      "*": [
-        "../../node_modules/*",
-        "./node_modules/*"
-      ]
-    }
+    "allowSyntheticDefaultImports": true
   },
   "include": [
     "src"
