@@ -19,7 +19,11 @@
     "skipLibCheck": true,
     "moduleResolution": "node",
     "resolveJsonModule": true,
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+    "typeRoots": [
+      "./node_modules/@types",
+      "../../node_modules/@types"
+    ]
   },
   "include": [
     "src"
