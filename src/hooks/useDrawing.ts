@@ -88,8 +88,7 @@ export const useDrawing = (pageNum: number) => {
     currentPathRef.current = {
       points: [{ x: normalizedX, y: normalizedY }],
       color,
-      width,
-      tool: 'pen'
+      width
     }
 
     // contextをキャッシュし、スタイルを一度だけ設定

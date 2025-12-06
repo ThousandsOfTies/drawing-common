@@ -18,7 +18,6 @@ export interface DrawingPath {
   points: DrawingPoint[]
   color: string
   width: number
-  tool: 'pen' | 'eraser'
 }
 
 /**
