@@ -117,18 +117,18 @@ export const useZoomPan = (
     const handleWheel = (e: WheelEvent) => {
       // containerRef内でのホイールイベントのみ処理
       if (!containerRef.current) return
-      
+
       const target = e.target as Node
       if (!containerRef.current.contains(target)) return
-      
+
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault()
         e.stopPropagation()
 
         const delta = e.deltaY > 0 ? -0.1 : 0.1
         const oldZoom = zoom
-        // プリレンダリング: zoom範囲 minFitZoom ～ 1.0
-        let newZoom = Math.max(minFitZoom, Math.min(1.0, oldZoom + delta))
+        // プリレンダリング: zoom範囲 minFitZoom ～ 2.0 (1000%)
+        let newZoom = Math.max(minFitZoom, Math.min(2.0, oldZoom + delta))
 
         // マウスカーソルを中心にズームするため、パンオフセットを調整
         const containerRect = containerRef.current.getBoundingClientRect()
@@ -136,7 +136,7 @@ export const useZoomPan = (
         // マウスカーソルのコンテナ内での位置（ビューポート座標 - コンテナのビューポート座標）
         const cursorX = e.clientX - containerRect.left
         const cursorY = e.clientY - containerRect.top
-        
+
         // 最後のホイールイベントのマウス位置を保存（ビューポート座標で保存）
         setLastWheelCursor({ x: e.clientX, y: e.clientY })
 
