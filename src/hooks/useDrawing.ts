@@ -121,46 +121,76 @@ export const useDrawing = (
     const normalizedX = x / canvas.width
     const normalizedY = y / canvas.height
 
-    // すべての点を保存（間引きなし - Apple Pencilの高速描画に対応）
-    currentPathRef.current.points.push({ x: normalizedX, y: normalizedY })
+    // 今回追加するポイントのリスト
+    const newPoints: { x: number, y: number }[] = []
 
-    const points = currentPathRef.current.points
-    if (points.length < 2) return
+    // マウス等の低サンプリングレート入力のために補間を行う
+    const path = currentPathRef.current
+    const lastPoint = path.points[path.points.length - 1]
 
-    // キャッシュされたcontextを使用
+    if (lastPoint) {
+      const dx = normalizedX - lastPoint.x
+      const dy = normalizedY - lastPoint.y
+      const dist = Math.sqrt(dx * dx + dy * dy)
+
+      // キャンバスサイズに対する相対的な閾値（例: 5px相当）
+      const threshold = 5 / Math.min(canvas.width, canvas.height)
+
+      if (dist > threshold) {
+        const steps = Math.min(10, Math.floor(dist / (threshold / 2))) // 最大10分割まで
+        for (let i = 1; i < steps; i++) {
+          const t = i / steps
+          newPoints.push({
+            x: lastPoint.x + dx * t,
+            y: lastPoint.y + dy * t
+          })
+        }
+      }
+    }
+
+    // 実際のタッチ/マウス位置を追加
+    newPoints.push({ x: normalizedX, y: normalizedY })
+
+    // ポイントを順次追加して描画
     const ctx = ctxRef.current
-    const len = points.length
 
-    // 描画ロジック（直近の数点だけを描画して高速化）
-    // Canvas上の座標に変換
-    const p1 = points[len - 2]
-    const p2 = points[len - 1]
-    const x1 = p1.x * canvas.width
-    const y1 = p1.y * canvas.height
-    const x2 = p2.x * canvas.width
-    const y2 = p2.y * canvas.height
+    for (const point of newPoints) {
+      path.points.push(point)
+      const points = path.points
+      const len = points.length
 
-    if (len === 2) {
-      ctx.beginPath()
-      ctx.moveTo(x1, y1)
-      ctx.lineTo(x2, y2)
-      ctx.stroke()
-    } else {
-      // 3点以上ある場合、直前の区間を二次ベジェ曲線で描画
-      const p0 = points[len - 3]
-      const x0 = p0.x * canvas.width
-      const y0 = p0.y * canvas.height
+      if (len < 2) continue
 
-      // 中点を制御点とする簡易スムージング
-      const mid1x = (x0 + x1) / 2
-      const mid1y = (y0 + y1) / 2
-      const mid2x = (x1 + x2) / 2
-      const mid2y = (y1 + y2) / 2
+      if (len < 3) {
+        // 点が2つの場合は直線
+        ctx.beginPath()
+        ctx.moveTo(points[0].x * canvas.width, points[0].y * canvas.height)
+        ctx.lineTo(points[1].x * canvas.width, points[1].y * canvas.height)
+        ctx.stroke()
+      } else {
+        // 3点以上の場合はベジェ曲線で滑らかに
+        // 今回追加された点(p2: len-1)に向かって、p0(len-3)→p1(len-2)を使って描画
+        const p0 = points[len - 3]
+        const p1 = points[len - 2]
+        const p2 = points[len - 1]
 
-      ctx.beginPath()
-      ctx.moveTo(mid1x, mid1y)
-      ctx.quadraticCurveTo(x1, y1, mid2x, mid2y)
-      ctx.stroke()
+        // 制御点を中間点に設定
+        const cpX = p1.x * canvas.width
+        const cpY = p1.y * canvas.height
+        const endX = (p1.x + p2.x) / 2 * canvas.width
+        const endY = (p1.y + p2.y) / 2 * canvas.height
+
+        ctx.beginPath()
+        if (len === 3) {
+          ctx.moveTo(p0.x * canvas.width, p0.y * canvas.height)
+        } else {
+          const prevEndX = (p0.x + p1.x) / 2 * canvas.width
+          const prevEndY = (p0.y + p1.y) / 2 * canvas.height
+          ctx.moveTo(prevEndX, prevEndY)
+        }
+        ctx.quadraticCurveTo(cpX, cpY, endX, endY)
+        ctx.stroke()
+      }
     }
   }
 

@@ -1,5 +1,5 @@
 // useEraser.ts
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import type { DrawingPath } from '../types'
 
 export const useEraser = (
@@ -7,11 +7,11 @@ export const useEraser = (
   onPathsChange: (paths: DrawingPath[]) => void
 ) => {
   const [isErasing, setIsErasing] = useState(false)
-  const [lastErasePos, setLastErasePos] = useState<{ x: number; y: number } | null>(null)
+  const lastErasePosRef = useRef<{ x: number; y: number } | null>(null)
 
   const startErasing = () => {
     setIsErasing(true)
-    setLastErasePos(null)
+    lastErasePosRef.current = null
   }
 
   const eraseAtPosition = (
@@ -21,10 +21,11 @@ export const useEraser = (
     currentPaths: DrawingPath[]
   ) => {
     // 前回と同じ位置なら処理をスキップ（パフォーマンス向上）
-    if (lastErasePos && Math.abs(lastErasePos.x - x) < 1 && Math.abs(lastErasePos.y - y) < 1) {
+    const lastPos = lastErasePosRef.current
+    if (lastPos && Math.abs(lastPos.x - x) < 1 && Math.abs(lastPos.y - y) < 1) {
       return
     }
-    setLastErasePos({ x, y })
+    lastErasePosRef.current = { x, y }
 
     // 消しゴムの位置に近いパスを全て探す
     const eraserRadiusPx = eraserSize
@@ -124,7 +125,7 @@ export const useEraser = (
 
   const stopErasing = () => {
     setIsErasing(false)
-    setLastErasePos(null)
+    lastErasePosRef.current = null
   }
 
   return {
