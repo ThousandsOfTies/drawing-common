@@ -129,9 +129,14 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX
         const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY
 
+        // 視覚的なサイズと内部バッファサイズの比率を計算
+        // (高解像度ディスプレイやRENDER_SCALEによる拡大縮小を補正)
+        const scaleX = canvas.width / rect.width
+        const scaleY = canvas.height / rect.height
+
         return {
-            x: clientX - rect.left,
-            y: clientY - rect.top
+            x: (clientX - rect.left) * scaleX,
+            y: (clientY - rect.top) * scaleY
         }
     }
 
