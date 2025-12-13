@@ -5,3 +5,6 @@ export type { DrawingPath, DrawingPoint, DrawingConfig, DrawingHistory, ToolType
 export { useDrawing } from './hooks/useDrawing'
 export { useEraser } from './hooks/useEraser'
 export { useZoomPan } from './hooks/useZoomPan'
+
+// Components
+export { DrawingCanvas, type DrawingCanvasProps } from './components/DrawingCanvas'
