@@ -17,8 +17,10 @@ export const useZoomPan = (
 
   // パン（移動）機能 - Ctrl+ドラッグで移動
   const startPanning = (e: React.MouseEvent<HTMLDivElement>) => {
+    console.log('🖐️ startPanning called, ctrlKey:', e.ctrlKey, 'metaKey:', e.metaKey)
     if (!e.ctrlKey && !e.metaKey) return
 
+    console.log('🖐️ Starting pan!')
     e.preventDefault()
     setIsPanning(true)
     setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y })
@@ -115,13 +117,18 @@ export const useZoomPan = (
   // Ctrl+ホイールでズーム（マウスカーソルを中心に）
   useEffect(() => {
     const handleWheel = (e: WheelEvent) => {
+      console.log('🔍 Wheel event, ctrlKey:', e.ctrlKey, 'metaKey:', e.metaKey, 'containerRef:', !!containerRef.current)
       // containerRef内でのホイールイベントのみ処理
       if (!containerRef.current) return
 
       const target = e.target as Node
-      if (!containerRef.current.contains(target)) return
+      if (!containerRef.current.contains(target)) {
+        console.log('🔍 Target not in container')
+        return
+      }
 
       if (e.ctrlKey || e.metaKey) {
+        console.log('🔍 Zooming!')
         e.preventDefault()
         e.stopPropagation()
 
@@ -150,6 +157,7 @@ export const useZoomPan = (
         const newPanOffsetX = cursorX - (cursorX - panOffset.x) * scaleRatio
         const newPanOffsetY = cursorY - (cursorY - panOffset.y) * scaleRatio
 
+        console.log('🔍 Zoom change:', oldZoom, '->', newZoom, 'panOffset:', newPanOffsetX, newPanOffsetY)
         setZoom(newZoom)
         setPanOffset({
           x: newPanOffsetX,
