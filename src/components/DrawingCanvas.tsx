@@ -33,7 +33,7 @@ export interface DrawingCanvasProps {
     onUndo?: () => void     // 2本指タップでのUndo
 }
 
-export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
+export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasProps>(({
     width,
     height,
     className,
@@ -48,8 +48,12 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     onPathAdd,
     onPathsChange,
     onUndo
-}) => {
+}, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null)
+
+    // 親コンポーネントに内部のcanvas要素を公開
+    React.useImperativeHandle(ref, () => canvasRef.current!)
+
     const isDrawing = tool === 'pen'
     const isErasing = tool === 'eraser'
     const isInteractive = !isCtrlPressed && (isDrawing || isErasing)
@@ -294,4 +298,4 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
             onTouchEnd={handleTouchEnd}
         />
     )
-}
+})
