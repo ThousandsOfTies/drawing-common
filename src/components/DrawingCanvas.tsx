@@ -3,23 +3,13 @@ import { useDrawing } from '../hooks/useDrawing'
 import { useEraser } from '../hooks/useEraser'
 import { DrawingPath } from '../types'
 
-// カーソルとアイコン用のSVG定義
+// カーソルとアイコン用のSVG定義（icons.tsx準拠）
 const ICON_SVG = {
     penCursor: (color: string) => {
-        const svg = `
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M7 17L17 7M17 7L17 11M17 7L13 7" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="2" cy="22" r="2" fill="${color}"/>
-      </svg>
-    `
-        return `url('data:image/svg+xml;utf8,${encodeURIComponent(svg)}') 0 24, auto`
+        const encodedColor = color.replace('#', '%23')
+        return `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><path fill='${encodedColor}' d='M3,17.25V21h3.75L17.81,9.94l-3.75-3.75L3,17.25z M20.71,7.04c0.39-0.39,0.39-1.02,0-1.41l-2.34-2.34 c-0.39-0.39-1.02-0.39-1.41,0l-1.83,1.83l3.75,3.75L20.71,7.04z'/></svg>") 2 20, crosshair`
     },
-    eraserCursor: `url('data:image/svg+xml;utf8,${encodeURIComponent(`
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="4" y="4" width="16" height="16" stroke="black" stroke-width="2" fill="white"/>
-      <path d="M8 8L16 16M16 8L8 16" stroke="black" stroke-width="2"/>
-    </svg>
-  `)}') 12 12, auto`
+    eraserCursor: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><rect fill='%232196F3' x='5' y='3' width='14' height='14' rx='1'/><rect fill='white' stroke='%23666' stroke-width='1' x='6' y='17' width='12' height='4' rx='0.5'/><line stroke='%231976D2' stroke-width='0.5' x1='7' y1='10' x2='17' y2='10'/></svg>") 12 12, pointer`
 }
 
 export interface DrawingCanvasProps {
