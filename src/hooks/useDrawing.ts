@@ -1,6 +1,4 @@
-
-
-// 線分の交差判定
+﻿// 線分の交差判定
 const doSegmentsIntersect = (
   p1: { x: number; y: number },
   p2: { x: number; y: number },
@@ -14,7 +12,7 @@ const doSegmentsIntersect = (
 }
 
 // パス同士が交差しているか判定
-const doPathsIntersect = (path1: DrawingPath, path2: DrawingPath): boolean => {
+export const doPathsIntersect = (path1: DrawingPath, path2: DrawingPath): boolean => {
   // パス1の各線分とパス2の各線分を比較
   for (let i = 0; i < path1.points.length - 1; i++) {
     for (let j = 0; j < path2.points.length - 1; j++) {
@@ -32,7 +30,7 @@ const doPathsIntersect = (path1: DrawingPath, path2: DrawingPath): boolean => {
 }
 
 // スクラッチパターンを検出（往復する動きを検出）
-const isScratchPattern = (path: DrawingPath): boolean => {
+export const isScratchPattern = (path: DrawingPath): boolean => {
   const points = path.points
 
   // 最低15ポイント必要（短すぎる線はスクラッチではない）
@@ -79,6 +77,10 @@ interface UseDrawingOptions {
   width: number
   color: string
   onPathComplete?: (path: DrawingPath) => void
+  // スクラッチ完了時のコールバック（交差したパスを削除するため）
+  onScratchComplete?: (scratchPath: DrawingPath) => void
+  // 既存パスを取得する関数（スクラッチ判定時に交差チェック用）
+  getCurrentPaths?: () => DrawingPath[]
 }
 
 export const useDrawing = (
@@ -169,7 +171,7 @@ export const useDrawing = (
         ctx.stroke()
       } else {
         // 3点以上の場合はベジェ曲線で滑らかに
-        // 今回追加された点(p2: len-1)に向かって、p0(len-3)→p1(len-2)を使って描画
+        // 今回追加された点(p2: len-1)に向かって、p0(len-3)p1(len-2)を使って描画
         const p0 = points[len - 3]
         const p1 = points[len - 2]
         const p2 = points[len - 1]
@@ -196,9 +198,22 @@ export const useDrawing = (
 
   const stopDrawing = () => {
     if (isDrawing && currentPathRef.current) {
-      if (options.onPathComplete) {
-        options.onPathComplete(currentPathRef.current)
+      const newPath = currentPathRef.current
+      
+      // スクラッチパターンかどうかを判定
+      if (isScratchPattern(newPath)) {
+        // スクラッチの場合はonScratchCompleteを呼び出す
+        if (options.onScratchComplete) {
+          options.onScratchComplete(newPath)
+        }
+        // スクラッチ自体は保存しない（onPathCompleteは呼ばない）
+      } else {
+        // 通常の描画の場合
+        if (options.onPathComplete) {
+          options.onPathComplete(newPath)
+        }
       }
+      
       currentPathRef.current = null
       ctxRef.current = null
       setIsDrawing(false)

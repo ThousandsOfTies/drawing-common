@@ -1,5 +1,5 @@
-import React, { useRef, useEffect, useState } from 'react'
-import { useDrawing } from '../hooks/useDrawing'
+﻿import React, { useRef, useEffect, useState } from 'react'
+import { useDrawing, doPathsIntersect } from '../hooks/useDrawing'
 import { useEraser } from '../hooks/useEraser'
 import { DrawingPath } from '../types'
 
@@ -67,11 +67,25 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         startDrawing: hookStartDrawing,
         draw: hookContinueDrawing,
         stopDrawing: hookStopDrawing
-    } = useDrawing(canvasRef, {
+        } = useDrawing(canvasRef, {
         width: size,
         color,
         onPathComplete: (path) => {
             onPathAdd(path)
+        },
+        // スクラッチ完了時：交差するパスを削除
+        onScratchComplete: (scratchPath) => {
+            if (!onPathsChange) return
+            
+            // 交差するパスを削除
+            const pathsToKeep = paths.filter(existingPath => 
+                !doPathsIntersect(scratchPath, existingPath)
+            )
+            
+            // 交差があった場合のみ更新
+            if (pathsToKeep.length < paths.length) {
+                onPathsChange(pathsToKeep)
+            }
         }
     })
 
@@ -299,3 +313,4 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         />
     )
 })
+
