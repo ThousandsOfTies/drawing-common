@@ -67,7 +67,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         startDrawing: hookStartDrawing,
         draw: hookContinueDrawing,
         stopDrawing: hookStopDrawing
-        } = useDrawing(canvasRef, {
+    } = useDrawing(canvasRef, {
         width: size,
         color,
         onPathComplete: (path) => {
@@ -76,12 +76,12 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         // スクラッチ完了時：交差するパスを削除
         onScratchComplete: (scratchPath) => {
             if (!onPathsChange) return
-            
+
             // 交差するパスを削除
-            const pathsToKeep = paths.filter(existingPath => 
+            const pathsToKeep = paths.filter(existingPath =>
                 !doPathsIntersect(scratchPath, existingPath)
             )
-            
+
             // 交差があった場合のみ更新
             if (pathsToKeep.length < paths.length) {
                 onPathsChange(pathsToKeep)
@@ -106,8 +106,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         const ctx = canvas.getContext('2d')
         if (!ctx) return
 
-        if (isCurrentlyDrawing) return
-
+        // 常にクリアして再描画
         ctx.clearRect(0, 0, canvas.width, canvas.height)
         ctx.lineCap = 'round'
         ctx.lineJoin = 'round'
@@ -125,7 +124,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
                 ctx.stroke()
             }
         })
-    }, [paths, width, height, isCurrentlyDrawing])
+    }, [paths, width, height])
 
     // Canvas座標変換ヘルパー
     const toCanvasCoordinates = (e: React.MouseEvent | React.TouchEvent): { x: number, y: number } | null => {

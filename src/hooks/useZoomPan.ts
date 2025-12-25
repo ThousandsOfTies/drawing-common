@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 
 export const useZoomPan = (
   containerRef: React.RefObject<HTMLDivElement>,
@@ -106,10 +106,89 @@ export const useZoomPan = (
   }
 
   // ズーム機能
+  const fitToScreen = useCallback((contentWidth: number, contentHeight: number, overrideContainerHeight?: number) => {
+    // Force HMR and verify argument
+    if (overrideContainerHeight) {
+      console.log('📏 fitToScreen: Using Override Height:', overrideContainerHeight)
+    }
+
+    if (!containerRef.current) return
+
+    const containerW = containerRef.current.clientWidth
+    const containerH = overrideContainerHeight ?? containerRef.current.clientHeight
+
+    // マージン考慮（上下左右 10px）
+    const MARGIN = 10
+    const availableW = containerW - (MARGIN * 2)
+    const availableH = containerH - (MARGIN * 2)
+
+    // 最適なズームレベルを計算（画面に収まる最大サイズ）
+    // 0除算防止
+    if (contentWidth === 0 || contentHeight === 0 || availableW <= 0 || availableH <= 0) {
+      // console.warn('⚠️ fitToScreen: Invalid dimensions', { containerW, containerH, contentWidth, contentHeight })
+      return
+    }
+
+    const scaleX = availableW / contentWidth
+    const scaleY = availableH / contentHeight
+    const newZoom = Math.min(scaleX, scaleY)
+
+    // 最小・最大ズーム範囲の制限
+    const clampedZoom = Math.max(minFitZoom, Math.min(2.0, newZoom))
+
+    // センタリング
+    const displayW = contentWidth * clampedZoom
+    const displayH = contentHeight * clampedZoom
+    const offsetX = (containerW - displayW) / 2
+    const offsetY = (containerH - displayH) / 2
+
+    // 詳細ログ出力（ユーザーデバッグ用）
+    const computedStyle = window.getComputedStyle(containerRef.current)
+    console.group('📏 formToScreen 詳細計算')
+    console.log('📦 Container Information:', {
+      width: containerW,
+      height: containerH,
+      paddingTop: computedStyle.paddingTop,
+      paddingBottom: computedStyle.paddingBottom,
+      marginTop: computedStyle.marginTop,
+      clientRect: containerRef.current.getBoundingClientRect()
+    })
+    console.log('📄 Content Information:', {
+      originalWidth: contentWidth,
+      originalHeight: contentHeight
+    })
+    console.log('🔍 Zoom Calculation:', {
+      availableW,
+      availableH,
+      scaleX,
+      scaleY,
+      newZoom,
+      clampedZoom
+    })
+    console.log('📍 Positioning:', {
+      displayW,
+      displayH,
+      gapX: containerW - displayW,
+      gapY: containerH - displayH,
+      calculatedOffsetX: offsetX,
+      calculatedOffsetY: offsetY
+    })
+    console.groupEnd()
+
+    setZoom(clampedZoom)
+    setPanOffset({ x: offsetX, y: offsetY })
+  }, [containerRef, minFitZoom])
+
   const resetZoom = () => {
     // プリレンダリング: リセットは等倍表示（1/RENDER_SCALE）に戻す
-    setZoom(1.0 / renderScale)
-    setPanOffset({ x: 0, y: 0 })
+    // もしcanvasRefがあればfitToScreenを呼ぶ方が良いが、引数が必要なので
+    // ここでは単純リセットか、onResetToFitコールバックに任せる
+    if (onResetToFit) {
+      onResetToFit()
+    } else {
+      setZoom(1.0 / renderScale)
+      setPanOffset({ x: 0, y: 0 })
+    }
   }
 
   // Ctrl+ホイールでズーム（マウスカーソルを中心に）
@@ -199,6 +278,7 @@ export const useZoomPan = (
     stopPanning,
     resetZoom,
     lastWheelCursor,
-    applyPanLimit
+    applyPanLimit,
+    fitToScreen
   }
 }
