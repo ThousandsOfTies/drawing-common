@@ -106,7 +106,13 @@ export const useZoomPan = (
   }
 
   // ズーム機能
-  const fitToScreen = useCallback((contentWidth: number, contentHeight: number, overrideContainerHeight?: number) => {
+  // options: { fitToHeight?: boolean, alignLeft?: boolean }
+  const fitToScreen = useCallback((
+    contentWidth: number,
+    contentHeight: number,
+    overrideContainerHeight?: number,
+    options?: { fitToHeight?: boolean; alignLeft?: boolean }
+  ) => {
     // Force HMR and verify argument
     if (overrideContainerHeight) {
       console.log('📏 fitToScreen: Using Override Height:', overrideContainerHeight)
@@ -125,54 +131,38 @@ export const useZoomPan = (
     // 最適なズームレベルを計算（画面に収まる最大サイズ）
     // 0除算防止
     if (contentWidth === 0 || contentHeight === 0 || availableW <= 0 || availableH <= 0) {
-      // console.warn('⚠️ fitToScreen: Invalid dimensions', { containerW, containerH, contentWidth, contentHeight })
       return
     }
 
     const scaleX = availableW / contentWidth
     const scaleY = availableH / contentHeight
-    const newZoom = Math.min(scaleX, scaleY)
+
+    // fitToHeightオプション: 高さにのみフィット（横長PDFがより大きく表示される）
+    let newZoom: number
+    if (options?.fitToHeight) {
+      newZoom = scaleY
+    } else {
+      newZoom = Math.min(scaleX, scaleY)
+    }
 
     // 最小・最大ズーム範囲の制限
     const clampedZoom = Math.max(minFitZoom, Math.min(2.0, newZoom))
 
-    // センタリング
+    // センタリング or 左寄せ
     const displayW = contentWidth * clampedZoom
     const displayH = contentHeight * clampedZoom
-    const offsetX = (containerW - displayW) / 2
+
+    // alignLeftオプション: 左寄せ（スプリット表示時に便利）
+    const offsetX = options?.alignLeft ? MARGIN : (containerW - displayW) / 2
     const offsetY = (containerH - displayH) / 2
 
     // 詳細ログ出力（ユーザーデバッグ用）
     const computedStyle = window.getComputedStyle(containerRef.current)
-    console.group('📏 formToScreen 詳細計算')
-    console.log('📦 Container Information:', {
-      width: containerW,
-      height: containerH,
-      paddingTop: computedStyle.paddingTop,
-      paddingBottom: computedStyle.paddingBottom,
-      marginTop: computedStyle.marginTop,
-      clientRect: containerRef.current.getBoundingClientRect()
-    })
-    console.log('📄 Content Information:', {
-      originalWidth: contentWidth,
-      originalHeight: contentHeight
-    })
-    console.log('🔍 Zoom Calculation:', {
-      availableW,
-      availableH,
-      scaleX,
-      scaleY,
-      newZoom,
-      clampedZoom
-    })
-    console.log('📍 Positioning:', {
-      displayW,
-      displayH,
-      gapX: containerW - displayW,
-      gapY: containerH - displayH,
-      calculatedOffsetX: offsetX,
-      calculatedOffsetY: offsetY
-    })
+    console.group('📏 fitToScreen 詳細計算')
+    console.log('📦 Container:', { width: containerW, height: containerH })
+    console.log('📄 Content:', { width: contentWidth, height: contentHeight })
+    console.log('🔍 Zoom:', { scaleX, scaleY, newZoom, clampedZoom, fitToHeight: options?.fitToHeight })
+    console.log('📍 Position:', { offsetX, offsetY, alignLeft: options?.alignLeft })
     console.groupEnd()
 
     setZoom(clampedZoom)
