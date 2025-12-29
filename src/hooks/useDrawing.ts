@@ -46,7 +46,8 @@ export const isScratchPattern = (path: DrawingPath): boolean => {
     const distance = Math.sqrt(dx * dx + dy * dy)
 
     // 距離が短すぎる場合はスキップ（ノイズ除去）
-    if (distance < 0.005) continue
+    // 閾値を下げて高ズーム時も検出可能に
+    if (distance < 0.001) continue
 
     const angle = Math.atan2(dy, dx)
 
@@ -199,7 +200,7 @@ export const useDrawing = (
   const stopDrawing = () => {
     if (isDrawing && currentPathRef.current) {
       const newPath = currentPathRef.current
-      
+
       // スクラッチパターンかどうかを判定
       if (isScratchPattern(newPath)) {
         // スクラッチの場合はonScratchCompleteを呼び出す
@@ -213,7 +214,7 @@ export const useDrawing = (
           options.onPathComplete(newPath)
         }
       }
-      
+
       currentPathRef.current = null
       ctxRef.current = null
       setIsDrawing(false)
