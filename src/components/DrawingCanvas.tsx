@@ -1,7 +1,7 @@
 ﻿import React, { useRef, useEffect, useState } from 'react'
 import { useDrawing, doPathsIntersect } from '../hooks/useDrawing'
 import { useEraser } from '../hooks/useEraser'
-import { DrawingPath } from '../types'
+import { DrawingPath, DrawingPoint, SelectionState } from '../types'
 
 // カーソルとアイコン用のSVG定義（icons.tsx準拠）
 const ICON_SVG = {
@@ -27,6 +27,14 @@ export interface DrawingCanvasProps {
     isCtrlPressed?: boolean // パン操作用（Ctrl押下時は描画無効）
     stylusOnly?: boolean    // パームリジェクション（Apple Pencilのみ描画許可）
 
+    // なげなわ選択（オプション）
+    selectionState?: SelectionState | null
+    onLassoComplete?: (path: DrawingPath) => boolean // trueを返すとパスを追加しない
+    onSelectionDragStart?: (point: DrawingPoint) => void
+    onSelectionDrag?: (point: DrawingPoint) => void
+    onSelectionDragEnd?: () => void
+    onSelectionClear?: () => void
+
     // イベント
     onPathAdd: (path: DrawingPath) => void
     onPathsChange?: (paths: DrawingPath[]) => void // 消しゴムで消された時など
@@ -45,6 +53,12 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     paths,
     isCtrlPressed = false,
     stylusOnly = false,
+    selectionState = null,
+    onLassoComplete,
+    onSelectionDragStart,
+    onSelectionDrag,
+    onSelectionDragEnd,
+    onSelectionClear,
     onPathAdd,
     onPathsChange,
     onUndo
@@ -56,6 +70,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
 
     const isDrawing = tool === 'pen'
     const isErasing = tool === 'eraser'
+    const hasSelection = selectionState && selectionState.selectedIndices.length > 0
     const isInteractive = !isCtrlPressed && (isDrawing || isErasing)
 
     // 2本指タップ検出用
@@ -71,6 +86,10 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         width: size,
         color,
         onPathComplete: (path) => {
+            // なげなわ選択が有効で、ループとして認識された場合はパスを追加しない
+            if (onLassoComplete && onLassoComplete(path)) {
+                return
+            }
             onPathAdd(path)
         },
         // スクラッチ完了時：交差するパスを削除
@@ -111,20 +130,55 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         ctx.lineCap = 'round'
         ctx.lineJoin = 'round'
 
-        paths.forEach(path => {
+        paths.forEach((path, index) => {
             ctx.beginPath()
-            ctx.strokeStyle = path.color
+            // 選択されたパスはハイライト
+            const isSelected = selectionState?.selectedIndices.includes(index)
+            ctx.strokeStyle = isSelected ? '#3498db' : path.color
             ctx.lineWidth = path.width
 
             if (path.points.length > 0) {
                 ctx.moveTo(path.points[0].x * canvas.width, path.points[0].y * canvas.height)
-                path.points.forEach((point, index) => {
-                    if (index > 0) ctx.lineTo(point.x * canvas.width, point.y * canvas.height)
+                path.points.forEach((point, idx) => {
+                    if (idx > 0) ctx.lineTo(point.x * canvas.width, point.y * canvas.height)
                 })
                 ctx.stroke()
             }
         })
-    }, [paths, width, height])
+
+        // 選択バウンディングボックスを描画
+        if (selectionState?.boundingBox) {
+            const bb = selectionState.boundingBox
+            ctx.strokeStyle = '#3498db'
+            ctx.lineWidth = 2
+            ctx.setLineDash([5, 5])
+            ctx.strokeRect(
+                bb.minX * canvas.width,
+                bb.minY * canvas.height,
+                (bb.maxX - bb.minX) * canvas.width,
+                (bb.maxY - bb.minY) * canvas.height
+            )
+            ctx.setLineDash([])
+        }
+
+        // ラッソパスを描画（選択用のループ線）
+        if (selectionState?.lassoPath) {
+            const lasso = selectionState.lassoPath
+            ctx.strokeStyle = 'rgba(52, 152, 219, 0.5)'
+            ctx.lineWidth = 2
+            ctx.setLineDash([3, 3])
+            ctx.beginPath()
+            if (lasso.points.length > 0) {
+                ctx.moveTo(lasso.points[0].x * canvas.width, lasso.points[0].y * canvas.height)
+                lasso.points.forEach((point, idx) => {
+                    if (idx > 0) ctx.lineTo(point.x * canvas.width, point.y * canvas.height)
+                })
+                ctx.closePath()
+                ctx.stroke()
+            }
+            ctx.setLineDash([])
+        }
+    }, [paths, width, height, selectionState])
 
     // Canvas座標変換ヘルパー
     const toCanvasCoordinates = (e: React.MouseEvent | React.TouchEvent): { x: number, y: number } | null => {
@@ -202,25 +256,70 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         hookStopErasing()
     }
 
+    // 正規化座標へ変換（0-1）
+    const toNormalizedCoordinates = (e: React.MouseEvent | React.TouchEvent): DrawingPoint | null => {
+        const coords = toCanvasCoordinates(e)
+        if (!coords) return null
+        const canvas = canvasRef.current
+        if (!canvas) return null
+        return {
+            x: coords.x / canvas.width,
+            y: coords.y / canvas.height
+        }
+    }
 
     // 統合ハンドラ: マウス
     const handleMouseDown = (e: React.MouseEvent) => {
+        // 選択中の場合
+        if (hasSelection && isDrawing) {
+            const point = toNormalizedCoordinates(e)
+            if (!point) return
+
+            // バウンディングボックス内なら移動開始
+            const bb = selectionState?.boundingBox
+            if (bb && point.x >= bb.minX && point.x <= bb.maxX && point.y >= bb.minY && point.y <= bb.maxY) {
+                onSelectionDragStart?.(point)
+                return
+            }
+
+            // バウンディングボックス外なら選択解除
+            onSelectionClear?.()
+            return
+        }
+
         if (isDrawing) handlePenDown(e)
         else if (isErasing) handleEraserDown(e)
     }
 
     const handleMouseMove = (e: React.MouseEvent) => {
+        // 選択をドラッグ中
+        if (selectionState?.isDragging) {
+            const point = toNormalizedCoordinates(e)
+            if (point) onSelectionDrag?.(point)
+            return
+        }
+
         if (isDrawing) handlePenMove(e)
         else if (isErasing) handleEraserMove(e)
     }
 
     const handleMouseUp = (e: React.MouseEvent) => {
+        // 選択ドラッグ終了
+        if (selectionState?.isDragging) {
+            onSelectionDragEnd?.()
+            return
+        }
+
         if (isDrawing) handlePenUp()
         else if (isErasing) handleEraserUp()
     }
 
     const handleMouseLeave = (e: React.MouseEvent) => {
         // 画面外に出たときは描画終了
+        if (selectionState?.isDragging) {
+            onSelectionDragEnd?.()
+            return
+        }
         if (isDrawing) handlePenUp()
         else if (isErasing) handleEraserUp()
     }
@@ -248,6 +347,23 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
             }
         }
 
+        // 選択中の場合
+        if (hasSelection && isDrawing) {
+            const point = toNormalizedCoordinates(e)
+            if (!point) return
+
+            // バウンディングボックス内なら移動開始
+            const bb = selectionState?.boundingBox
+            if (bb && point.x >= bb.minX && point.x <= bb.maxX && point.y >= bb.minY && point.y <= bb.maxY) {
+                onSelectionDragStart?.(point)
+                return
+            }
+
+            // バウンディングボックス外なら選択解除
+            onSelectionClear?.()
+            return
+        }
+
         if (isDrawing) handlePenDown(e)
         else if (isErasing) handleEraserDown(e)
     }
@@ -261,11 +377,24 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
             }
         }
 
+        // 選択をドラッグ中
+        if (selectionState?.isDragging) {
+            const point = toNormalizedCoordinates(e)
+            if (point) onSelectionDrag?.(point)
+            return
+        }
+
         if (isDrawing) handlePenMove(e)
         else if (isErasing) handleEraserMove(e)
     }
 
     const handleTouchEnd = (e: React.TouchEvent) => {
+        // 選択ドラッグ終了
+        if (selectionState?.isDragging) {
+            onSelectionDragEnd?.()
+            return
+        }
+
         // 2本指タップUndo判定
         if (twoFingerTapStartRef.current && onUndo) {
             // 指が離れたタイミング

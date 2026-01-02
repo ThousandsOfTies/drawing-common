@@ -36,3 +36,19 @@ export interface DrawingHistory {
   paths: DrawingPath[]
   index: number
 }
+
+/**
+ * 選択状態
+ */
+export interface SelectionState {
+  /** 選択に使用したラッソのパス */
+  lassoPath: DrawingPath | null
+  /** 選択されたパスのインデックス */
+  selectedIndices: number[]
+  /** バウンディングボックス（正規化座標） */
+  boundingBox: { minX: number; minY: number; maxX: number; maxY: number } | null
+  /** ドラッグ中か */
+  isDragging: boolean
+  /** ドラッグ開始位置 */
+  dragStart: DrawingPoint | null
+}
