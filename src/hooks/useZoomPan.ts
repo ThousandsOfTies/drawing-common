@@ -12,6 +12,7 @@ export const useZoomPan = (
   const [isPanning, setIsPanning] = useState(false)
   const [panStart, setPanStart] = useState({ x: 0, y: 0 })
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 })
+  const [overscroll, setOverscroll] = useState({ x: 0, y: 0 })
   const [isCtrlPressed, setIsCtrlPressed] = useState(false)
   const [lastWheelCursor, setLastWheelCursor] = useState<{ x: number; y: number } | null>(null)
 
@@ -24,7 +25,8 @@ export const useZoomPan = (
     setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y })
   }
 
-  // パン範囲制限を適用する関数（常に2/3が表示されるように）
+  // パン範囲制限を適用する関数
+  // 新仕様: 右移動時はPDFの左端が表示領域の右端まで、左移動時はPDFの右端が表示領域の左端まで
   const applyPanLimit = (offset: { x: number; y: number }, currentZoom?: number): { x: number; y: number } => {
     if (!containerRef.current || !canvasRef?.current) {
       return offset
@@ -42,53 +44,43 @@ export const useZoomPan = (
     const containerWidth = container.clientWidth
     const containerHeight = container.clientHeight
 
-    // 表示されているPDFの部分が常に2/3以上になるように制限
-    // PDFが画面より大きい場合のみ制限を適用
     let limitedX = offset.x
     let limitedY = offset.y
 
-    if (displayWidth > containerWidth) {
-      // X方向の制限: PDFの左端1/3まで隠れる、右端1/3まで隠れる
-      const minX = -displayWidth / 3  // PDFが左にパンした時の最小値
-      const maxX = containerWidth - displayWidth * (2 / 3)  // PDFが右にパンした時の最大値
-      const originalX = limitedX
-      limitedX = Math.max(minX, Math.min(maxX, offset.x))
-
-      // デバッグログ（制限が適用された場合のみ）
-      if (originalX !== limitedX) {
-        console.log('🔒 X方向パン制限適用:', {
-          displayWidth,
-          containerWidth,
-          minX,
-          maxX,
-          requestedX: offset.x,
-          limitedX
-        })
-      }
+    // X方向の制限
+    // 基本: 左端(0) ～ 右端(container-display)
+    // displayWidthがcontainerWidthより大きい:
+    //   minX = containerWidth - displayWidth (右端が見える位置)
+    //   maxX = 0 (左端が見える位置)
+    // 小さい場合:
+    //   minX = 0
+    //   maxX = containerWidth - displayWidth
+    let minX: number, maxX: number
+    if (displayWidth >= containerWidth) {
+      minX = containerWidth - displayWidth
+      maxX = 0
+    } else {
+      minX = 0
+      maxX = containerWidth - displayWidth
     }
 
-    if (displayHeight > containerHeight) {
-      // Y方向の制限: PDFの上端1/3まで隠れる、下端1/3まで隠れる
-      const minY = -displayHeight / 3  // PDFが上にパンした時の最小値
-      const maxY = containerHeight - displayHeight * (2 / 3)  // PDFが下にパンした時の最大値
-      const originalY = limitedY
-      limitedY = Math.max(minY, Math.min(maxY, offset.y))
+    limitedX = Math.max(minX, Math.min(maxX, offset.x))
 
-      // デバッグログ（制限が適用された場合のみ）
-      if (originalY !== limitedY) {
-        console.log('🔒 Y方向パン制限適用:', {
-          displayHeight,
-          containerHeight,
-          minY,
-          maxY,
-          requestedY: offset.y,
-          limitedY
-        })
-      }
+    // Y方向の制限
+    let minY: number, maxY: number
+    if (displayHeight >= containerHeight) {
+      minY = containerHeight - displayHeight
+      maxY = 0
+    } else {
+      minY = 0
+      maxY = containerHeight - displayHeight
     }
+
+    limitedY = Math.max(minY, Math.min(maxY, offset.y))
 
     return { x: limitedX, y: limitedY }
   }
+
 
   const doPanning = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isPanning) return
@@ -98,12 +90,28 @@ export const useZoomPan = (
       y: e.clientY - panStart.y
     }
 
-    setPanOffset(newOffset)
+    // パン制限を適用（PDFが画面外に消えないように）
+    const limitedOffset = applyPanLimit(newOffset)
+
+    // オーバースクロール計算（制限された分だけずらす）
+    // 抵抗感を出すために係数を掛ける
+    const OVERSCROLL_RESISTANCE = 0.4
+    const diffX = (newOffset.x - limitedOffset.x) * OVERSCROLL_RESISTANCE
+    const diffY = (newOffset.y - limitedOffset.y) * OVERSCROLL_RESISTANCE
+
+    setOverscroll({ x: diffX, y: diffY })
+    setPanOffset(limitedOffset)
   }
 
   const stopPanning = () => {
     setIsPanning(false)
+    // overscrollのリセットと判定は呼び出し元で行う
   }
+
+  // オーバースクロールをリセットする関数
+  const resetOverscroll = useCallback(() => {
+    setOverscroll({ x: 0, y: 0 })
+  }, [])
 
   // ズーム機能
   // options: { fitToHeight?: boolean, alignLeft?: boolean }
@@ -114,9 +122,9 @@ export const useZoomPan = (
     options?: { fitToHeight?: boolean; alignLeft?: boolean }
   ) => {
     // Force HMR and verify argument
-    if (overrideContainerHeight) {
-      console.log('📏 fitToScreen: Using Override Height:', overrideContainerHeight)
-    }
+    // if (overrideContainerHeight) {
+    //   console.log('📏 fitToScreen: Using Override Height:', overrideContainerHeight)
+    // }
 
     if (!containerRef.current) return
 
@@ -156,17 +164,12 @@ export const useZoomPan = (
     const offsetX = options?.alignLeft ? MARGIN : (containerW - displayW) / 2
     const offsetY = (containerH - displayH) / 2
 
-    // 詳細ログ出力（ユーザーデバッグ用）
-    const computedStyle = window.getComputedStyle(containerRef.current)
-    console.group('📏 fitToScreen 詳細計算')
-    console.log('📦 Container:', { width: containerW, height: containerH })
-    console.log('📄 Content:', { width: contentWidth, height: contentHeight })
-    console.log('🔍 Zoom:', { scaleX, scaleY, newZoom, clampedZoom, fitToHeight: options?.fitToHeight })
-    console.log('📍 Position:', { offsetX, offsetY, alignLeft: options?.alignLeft })
-    console.groupEnd()
+    // 念のため制限を適用（計算値が正しいはずだが保険として）
+    const limitedOffset = applyPanLimit({ x: offsetX, y: offsetY }, clampedZoom)
 
+    setOverscroll({ x: 0, y: 0 }) // オーバースクロールがあればリセット
     setZoom(clampedZoom)
-    setPanOffset({ x: offsetX, y: offsetY })
+    setPanOffset(limitedOffset)
   }, [containerRef, minFitZoom])
 
   const resetZoom = () => {
@@ -180,6 +183,25 @@ export const useZoomPan = (
       setPanOffset({ x: 0, y: 0 })
     }
   }
+
+  // 現在のコンテナとコンテンツサイズに基づいて、画面に収まる最小倍率を計算
+  const getFitToScreenZoom = useCallback(() => {
+    if (!containerRef.current || !canvasRef?.current) return minFitZoom
+
+    const container = containerRef.current
+    const canvas = canvasRef.current
+
+    // 0除算防止
+    if (canvas.width === 0 || canvas.height === 0) return minFitZoom
+
+    // マージン考慮（任意、ここではぴったり合わせるためマージンなし、あるいは定数定義）
+    // fitToScreen関数ではMARGIN=10を使っているが、最小リミットとしては0マージンで計算
+    const scaleX = container.clientWidth / canvas.width
+    const scaleY = container.clientHeight / canvas.height
+
+    return Math.min(scaleX, scaleY)
+  }, [containerRef, canvasRef, minFitZoom])
+
 
   // Ctrl+ホイールでズーム（マウスカーソルを中心に）
   useEffect(() => {
@@ -196,34 +218,28 @@ export const useZoomPan = (
 
         const delta = e.deltaY > 0 ? -0.1 : 0.1
         const oldZoom = zoom
-        // プリレンダリング: zoom範囲 minFitZoom ～ 2.0 (1000%)
-        let newZoom = Math.max(minFitZoom, Math.min(2.0, oldZoom + delta))
 
-        // マウスカーソルを中心にズームするため、パンオフセットを調整
+        // 動的な最小倍率（Fitサイズ）を取得
+        const dynamicMinZoom = getFitToScreenZoom()
+
+        // プリレンダリング: zoom範囲 dynamicMinZoom ～ 2.0 (1000%)
+        let newZoom = Math.max(dynamicMinZoom, Math.min(2.0, oldZoom + delta))
+
+        // ... (省略なし) ...
         const containerRect = containerRef.current.getBoundingClientRect()
-
-        // マウスカーソルのコンテナ内での位置（ビューポート座標 - コンテナのビューポート座標）
         const cursorX = e.clientX - containerRect.left
         const cursorY = e.clientY - containerRect.top
-
-        // 最後のホイールイベントのマウス位置を保存（ビューポート座標で保存）
         setLastWheelCursor({ x: e.clientX, y: e.clientY })
 
-        // 現在のpanOffsetを考慮した、カーソルが指しているコンテンツ座標
-        // contentX = (cursorX - panOffset.x) / oldZoom
-        // ズーム後も同じコンテンツ座標がcursorXに来るように調整
-        // cursorX = contentX * newZoom + newPanOffset
-        // newPanOffset = cursorX - contentX * newZoom
-        //              = cursorX - (cursorX - oldPanOffset) * (newZoom / oldZoom)
         const scaleRatio = newZoom / oldZoom
         const newPanOffsetX = cursorX - (cursorX - panOffset.x) * scaleRatio
         const newPanOffsetY = cursorY - (cursorY - panOffset.y) * scaleRatio
 
+        // パン制限を適用（PDFが画面外に消えないように）
+        const limitedOffset = applyPanLimit({ x: newPanOffsetX, y: newPanOffsetY }, newZoom)
+
         setZoom(newZoom)
-        setPanOffset({
-          x: newPanOffsetX,
-          y: newPanOffsetY
-        })
+        setPanOffset(limitedOffset)
       }
     }
 
@@ -231,7 +247,7 @@ export const useZoomPan = (
     return () => {
       document.removeEventListener('wheel', handleWheel)
     }
-  }, [containerRef, zoom, panOffset, minFitZoom, onResetToFit])
+  }, [containerRef, zoom, panOffset, minFitZoom, onResetToFit, getFitToScreenZoom]) // getFitToScreenZoomを依存配列に追加
 
   // Ctrlキーの状態を追跡
   useEffect(() => {
@@ -262,6 +278,9 @@ export const useZoomPan = (
     isPanning,
     panOffset,
     setPanOffset,
+    overscroll,       // 追加
+    setOverscroll,    // 追加
+    resetOverscroll,  // 追加
     isCtrlPressed,
     startPanning,
     doPanning,
@@ -269,6 +288,8 @@ export const useZoomPan = (
     resetZoom,
     lastWheelCursor,
     applyPanLimit,
-    fitToScreen
+    fitToScreen,
+    getFitToScreenZoom // 追加エクスポート
   }
 }
+
