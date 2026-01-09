@@ -155,12 +155,12 @@ export const useLassoSelection = (
     })
 
     // 長押し検出用
-    const longPressTimerRef = useRef<NodeJS.Timeout | null>(null)
+    const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const longPressStartPointRef = useRef<DrawingPoint | null>(null)
     const longPressStrokeIndexRef = useRef<number>(-1)
 
     // 無操作タイムアウト用
-    const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null)
+    const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     // ラッソストロークのインデックス（削除用）
     const lassoStrokeIndexRef = useRef<number>(-1)
