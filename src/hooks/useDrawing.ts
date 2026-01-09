@@ -221,10 +221,21 @@ export const useDrawing = (
     }
   }
 
+  /**
+   * 描画をキャンセル（パスを保存せずにリセット）
+   * なげなわ選択モード発動時などに使用
+   */
+  const cancelDrawing = () => {
+    currentPathRef.current = null
+    ctxRef.current = null
+    setIsDrawing(false)
+  }
+
   return {
     isDrawing,
     startDrawing,
     draw, // 名前変更 continueDrawing -> draw
-    stopDrawing
+    stopDrawing,
+    cancelDrawing
   }
 }

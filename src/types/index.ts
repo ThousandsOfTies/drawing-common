@@ -43,6 +43,8 @@ export interface DrawingHistory {
 export interface SelectionState {
   /** 選択に使用したラッソのパス */
   lassoPath: DrawingPath | null
+  /** ラッソストロークのインデックス（描画時に破線化するため） */
+  lassoStrokeIndex: number
   /** 選択されたパスのインデックス */
   selectedIndices: number[]
   /** バウンディングボックス（正規化座標） */

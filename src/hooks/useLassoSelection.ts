@@ -1,17 +1,42 @@
 /**
- * なげなわ選択機能（Lasso Selection）
+ * なげなわ選択機能（Lasso Selection）- 改良版
  * 
- * ペンモードで閉じたループを描くと、ループ内のストロークを選択し、
- * ドラッグで移動できる機能を提供する。
+ * 既存のストロークをペン/マウスで1秒間長押しすると、
+ * そのストロークが閉じたループ（始点と終点が近い）かをチェックし、
+ * ループであればその中のストロークを選択モードで移動可能にする。
+ * 
+ * 仕様:
+ * - ストロークを長押し（1秒）で選択モード発動
+ * - ループ内のストロークを選択
+ * - ドラッグで移動可能
+ * - 3秒間無操作でモード終了、ループストロークを削除
  */
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import type { DrawingPath, DrawingPoint, SelectionState } from '../types'
 
+/** 長押し認識に必要な時間（ミリ秒） */
+const LONG_PRESS_DURATION = 1000
+
+/** 選択モード自動終了までの時間（ミリ秒） */
+const INACTIVITY_TIMEOUT = 3000
+
+/** 始点と終点がこの距離以下なら閉じたループとみなす（正規化座標） */
+const CLOSE_THRESHOLD = 0.05
+
+/** パスが選択されたとみなすために、ポイントの何割がループ内にあればよいか */
+const SELECTION_RATIO = 0.5
+
 interface UseLassoSelectionOptions {
-    /** 始点と終点の距離がこの閾値以下ならループとみなす（正規化座標） */
+    /** 長押し時間（ミリ秒） */
+    longPressDuration?: number
+    /** 無操作タイムアウト（ミリ秒） */
+    inactivityTimeout?: number
+    /** 閉じたループとみなす閾値（正規化座標） */
     closeThreshold?: number
-    /** パスが選択されたとみなすために、ポイントの何割がループ内にあればよいか */
+    /** 選択判定の閾値（割合） */
     selectionRatio?: number
+    /** 選択モード発動時のコールバック（描画キャンセル用） */
+    onSelectionActivate?: () => void
 }
 
 /**
@@ -44,7 +69,6 @@ const isClosedLoop = (path: DrawingPath, threshold: number): boolean => {
 
 /**
  * パスがループ内に含まれているかを判定
- * パスのポイントの一定割合以上がループ内にあれば選択とみなす
  */
 const isPathInsideLasso = (
     path: DrawingPath,
@@ -61,6 +85,27 @@ const isPathInsideLasso = (
     }
 
     return insideCount / path.points.length >= ratio
+}
+
+/**
+ * 点がどのストローク上にあるかを判定
+ * @returns ストロークのインデックス、見つからない場合は -1
+ */
+const findStrokeAtPoint = (
+    point: DrawingPoint,
+    paths: DrawingPath[],
+    hitRadius: number = 0.02
+): number => {
+    for (let i = paths.length - 1; i >= 0; i--) {
+        const path = paths[i]
+        for (const p of path.points) {
+            const dist = Math.hypot(p.x - point.x, p.y - point.y)
+            if (dist < hitRadius) {
+                return i
+            }
+        }
+    }
+    return -1
 }
 
 /**
@@ -85,80 +130,243 @@ const calculateBoundingBox = (paths: DrawingPath[], indices: number[]) => {
 }
 
 /**
- * なげなわ選択フック
+ * なげなわ選択フック（改良版）
  */
 export const useLassoSelection = (
     paths: DrawingPath[],
     onPathsChange: (paths: DrawingPath[]) => void,
     options: UseLassoSelectionOptions = {}
 ) => {
-    const { closeThreshold = 0.05, selectionRatio = 0.5 } = options
+    const {
+        longPressDuration = LONG_PRESS_DURATION,
+        inactivityTimeout = INACTIVITY_TIMEOUT,
+        closeThreshold = CLOSE_THRESHOLD,
+        selectionRatio = SELECTION_RATIO,
+        onSelectionActivate
+    } = options
 
     const [selectionState, setSelectionState] = useState<SelectionState>({
         lassoPath: null,
+        lassoStrokeIndex: -1,
         selectedIndices: [],
         boundingBox: null,
         isDragging: false,
         dragStart: null
     })
 
+    // 長押し検出用
+    const longPressTimerRef = useRef<NodeJS.Timeout | null>(null)
+    const longPressStartPointRef = useRef<DrawingPoint | null>(null)
+    const longPressStrokeIndexRef = useRef<number>(-1)
+
+    // 無操作タイムアウト用
+    const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null)
+
+    // ラッソストロークのインデックス（削除用）
+    const lassoStrokeIndexRef = useRef<number>(-1)
+
+    // 元パス保存（移動時の参照用）
     const originalPathsRef = useRef<DrawingPath[]>([])
 
+    // pathsのref（タイマーコールバック内で最新を参照）
+    const pathsRef = useRef(paths)
+    useEffect(() => {
+        pathsRef.current = paths
+    }, [paths])
+
     /**
-     * 描画が完了した時に呼ばれる。ループならtrueを返す。
+     * 選択モードを終了（共通の解除処理）
+     * - タイマーをクリア
+     * - ラッソストロークを削除
+     * - 選択状態をリセット
+     * 
+     * どのような理由で解除されても、この関数が呼ばれる
      */
-    const checkForLasso = useCallback((path: DrawingPath): boolean => {
-        if (!isClosedLoop(path, closeThreshold)) {
-            return false
+    const clearSelection = useCallback(() => {
+        // タイマーをクリア
+        if (longPressTimerRef.current) {
+            clearTimeout(longPressTimerRef.current)
+            longPressTimerRef.current = null
+        }
+        if (inactivityTimerRef.current) {
+            clearTimeout(inactivityTimerRef.current)
+            inactivityTimerRef.current = null
         }
 
-        // ループ内のパスを検索
-        const selectedIndices: number[] = []
-        for (let i = 0; i < paths.length; i++) {
-            if (isPathInsideLasso(paths[i], path.points, selectionRatio)) {
-                selectedIndices.push(i)
-            }
+        // ラッソストロークを削除
+        const currentPaths = pathsRef.current
+        const lassoIdx = lassoStrokeIndexRef.current
+        if (lassoIdx >= 0 && lassoIdx < currentPaths.length) {
+            const newPaths = currentPaths.filter((_, i) => i !== lassoIdx)
+            onPathsChange(newPaths)
         }
 
-        if (selectedIndices.length === 0) {
-            return false // 何も選択されなかった
-        }
-
-        // 選択状態を設定
-        const boundingBox = calculateBoundingBox(paths, selectedIndices)
+        // 選択状態をリセット
         setSelectionState({
-            lassoPath: path,
-            selectedIndices,
-            boundingBox,
+            lassoPath: null,
+            lassoStrokeIndex: -1,
+            selectedIndices: [],
+            boundingBox: null,
             isDragging: false,
             dragStart: null
         })
+        lassoStrokeIndexRef.current = -1
+        originalPathsRef.current = []
+    }, [onPathsChange])
 
-        // 元のパスを保存（移動時の参照用）
-        originalPathsRef.current = paths.map(p => ({
-            ...p,
-            points: [...p.points.map(pt => ({ ...pt }))]
-        }))
-
-        return true
-    }, [paths, closeThreshold, selectionRatio])
+    // clearSelectionのref（タイマーコールバック内で最新を参照）
+    const clearSelectionRef = useRef(clearSelection)
+    useEffect(() => {
+        clearSelectionRef.current = clearSelection
+    }, [clearSelection])
 
     /**
-     * 点が選択範囲（バウンディングボックス）内にあるか判定
+     * 無操作タイマーをリセット
+     * タイムアウト時はclearSelectionを呼び出す
+     */
+    const resetInactivityTimer = useCallback(() => {
+        if (inactivityTimerRef.current) {
+            clearTimeout(inactivityTimerRef.current)
+        }
+        inactivityTimerRef.current = setTimeout(() => {
+            // タイムアウト：共通の解除処理を呼び出す
+            clearSelectionRef.current()
+        }, inactivityTimeout)
+    }, [inactivityTimeout])
+
+    /**
+     * 長押し開始（ポインターダウン時に呼ぶ）
+     */
+    const startLongPress = useCallback((point: DrawingPoint) => {
+        // 既に選択中の場合は長押し検出しない
+        if (selectionState.selectedIndices.length > 0) {
+            return
+        }
+
+        // タイマーをクリア
+        if (longPressTimerRef.current) {
+            clearTimeout(longPressTimerRef.current)
+        }
+
+        // どのストロークの上か判定
+        const strokeIndex = findStrokeAtPoint(point, paths)
+        if (strokeIndex < 0) {
+            // ストローク上でない場合は何もしない
+            longPressStartPointRef.current = null
+            longPressStrokeIndexRef.current = -1
+            return
+        }
+
+        longPressStartPointRef.current = point
+        longPressStrokeIndexRef.current = strokeIndex
+
+        // 1秒後に選択モード発動を試みる
+        longPressTimerRef.current = setTimeout(() => {
+            const targetPath = pathsRef.current[strokeIndex]
+            if (!targetPath) return
+
+            // 閉じたループかチェック
+            if (!isClosedLoop(targetPath, closeThreshold)) {
+                // ループでなければ何もしない
+                return
+            }
+
+            // ループ内のストロークを検索
+            const selectedIndices: number[] = []
+            for (let i = 0; i < pathsRef.current.length; i++) {
+                if (i === strokeIndex) continue // ラッソ自身は選択しない
+                if (isPathInsideLasso(pathsRef.current[i], targetPath.points, selectionRatio)) {
+                    selectedIndices.push(i)
+                }
+            }
+
+            if (selectedIndices.length === 0) {
+                // 何も選択されなかった
+                return
+            }
+
+            // 選択モード発動
+            const boundingBox = calculateBoundingBox(pathsRef.current, selectedIndices)
+            lassoStrokeIndexRef.current = strokeIndex
+
+            // 長押し開始位置を取得（ドラッグ開始位置として使用）
+            const startPoint = longPressStartPointRef.current
+
+            // 描画をキャンセル（ドラッグ軌跡が描画されないように）
+            if (onSelectionActivate) {
+                onSelectionActivate()
+            }
+
+            setSelectionState({
+                lassoPath: targetPath,
+                lassoStrokeIndex: strokeIndex,
+                selectedIndices,
+                boundingBox,
+                // 長押し後すぐにドラッグできるようにする
+                isDragging: true,
+                dragStart: startPoint
+            })
+
+            // 元のパスを保存（ラッソストロークも含む）
+            originalPathsRef.current = pathsRef.current.map(p => ({
+                ...p,
+                points: [...p.points.map(pt => ({ ...pt }))]
+            }))
+
+            // 無操作タイマー開始
+            resetInactivityTimer()
+
+        }, longPressDuration)
+    }, [paths, selectionState.selectedIndices.length, closeThreshold, selectionRatio, longPressDuration, resetInactivityTimer])
+
+    /**
+     * 長押しキャンセル（ポインター移動 or アップ時）
+     */
+    const cancelLongPress = useCallback(() => {
+        if (longPressTimerRef.current) {
+            clearTimeout(longPressTimerRef.current)
+            longPressTimerRef.current = null
+        }
+        longPressStartPointRef.current = null
+        longPressStrokeIndexRef.current = -1
+    }, [])
+
+    /**
+     * ポインター移動時に呼ぶ（長押しキャンセル判定）
+     */
+    const checkLongPressMove = useCallback((point: DrawingPoint, threshold: number = 0.01) => {
+        if (!longPressStartPointRef.current) return
+
+        const dx = point.x - longPressStartPointRef.current.x
+        const dy = point.y - longPressStartPointRef.current.y
+        const dist = Math.hypot(dx, dy)
+
+        if (dist > threshold) {
+            // 移動したらキャンセル
+            cancelLongPress()
+        }
+    }, [cancelLongPress])
+
+    /**
+     * 点がラッソストローク（輪）上にあるか判定
+     * 輪をドラッグして中のストロークを移動させるため
      */
     const isPointInSelection = useCallback((point: DrawingPoint): boolean => {
-        const { boundingBox } = selectionState
-        if (!boundingBox) return false
+        const { lassoStrokeIndex, selectedIndices } = selectionState
+        if (selectedIndices.length === 0 || lassoStrokeIndex < 0) return false
 
-        // バウンディングボックスに少しマージンを追加
-        const margin = 0.02
-        return (
-            point.x >= boundingBox.minX - margin &&
-            point.x <= boundingBox.maxX + margin &&
-            point.y >= boundingBox.minY - margin &&
-            point.y <= boundingBox.maxY + margin
-        )
-    }, [selectionState])
+        // ラッソストローク上にあるかチェック
+        const lasso = paths[lassoStrokeIndex]
+        if (!lasso) return false
+
+        for (const p of lasso.points) {
+            const dist = Math.hypot(p.x - point.x, p.y - point.y)
+            if (dist < 0.02) { // ヒット判定半径
+                return true
+            }
+        }
+        return false
+    }, [selectionState, paths])
 
     /**
      * ドラッグ開始
@@ -166,12 +374,15 @@ export const useLassoSelection = (
     const startDrag = useCallback((point: DrawingPoint) => {
         if (selectionState.selectedIndices.length === 0) return
 
+        // 無操作タイマーリセット
+        resetInactivityTimer()
+
         setSelectionState(prev => ({
             ...prev,
             isDragging: true,
             dragStart: point
         }))
-    }, [selectionState.selectedIndices.length])
+    }, [selectionState.selectedIndices.length, resetInactivityTimer])
 
     /**
      * ドラッグ中の移動
@@ -179,12 +390,21 @@ export const useLassoSelection = (
     const drag = useCallback((point: DrawingPoint) => {
         if (!selectionState.isDragging || !selectionState.dragStart) return
 
+        // 無操作タイマーリセット
+        resetInactivityTimer()
+
         const dx = point.x - selectionState.dragStart.x
         const dy = point.y - selectionState.dragStart.y
 
-        // 選択されたパスを移動
+        const lassoIdx = selectionState.lassoStrokeIndex
+
+        // 選択されたパスとラッソストロークを移動
         const newPaths = paths.map((path, idx) => {
-            if (!selectionState.selectedIndices.includes(idx)) {
+            // ラッソストロークも移動対象に含める
+            const isLasso = idx === lassoIdx
+            const isSelected = selectionState.selectedIndices.includes(idx)
+
+            if (!isLasso && !isSelected) {
                 return path
             }
 
@@ -201,13 +421,16 @@ export const useLassoSelection = (
         })
 
         onPathsChange(newPaths)
-    }, [selectionState, paths, onPathsChange])
+    }, [selectionState, paths, onPathsChange, resetInactivityTimer])
 
     /**
      * ドラッグ終了
      */
     const endDrag = useCallback(() => {
         if (!selectionState.isDragging) return
+
+        // 無操作タイマーリセット
+        resetInactivityTimer()
 
         // dragStartを更新して、次のドラッグに備える
         setSelectionState(prev => ({
@@ -223,35 +446,37 @@ export const useLassoSelection = (
             ...p,
             points: [...p.points.map(pt => ({ ...pt }))]
         }))
-    }, [selectionState.isDragging, paths])
-
-    /**
-     * 選択を解除
-     */
-    const clearSelection = useCallback(() => {
-        setSelectionState({
-            lassoPath: null,
-            selectedIndices: [],
-            boundingBox: null,
-            isDragging: false,
-            dragStart: null
-        })
-        originalPathsRef.current = []
-    }, [])
+    }, [selectionState.isDragging, paths, resetInactivityTimer])
 
     /**
      * 選択中かどうか
      */
     const hasSelection = selectionState.selectedIndices.length > 0
 
+    // クリーンアップ
+    useEffect(() => {
+        return () => {
+            if (longPressTimerRef.current) {
+                clearTimeout(longPressTimerRef.current)
+            }
+            if (inactivityTimerRef.current) {
+                clearTimeout(inactivityTimerRef.current)
+            }
+        }
+    }, [])
+
     return {
         selectionState,
         hasSelection,
-        checkForLasso,
+        startLongPress,
+        cancelLongPress,
+        checkLongPressMove,
         isPointInSelection,
         startDrag,
         drag,
         endDrag,
-        clearSelection
+        clearSelection,
+        // 後方互換性のため（使用しないが、呼び出し元でエラーにならないよう）
+        checkForLasso: () => false
     }
 }

@@ -130,9 +130,15 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         ctx.lineCap = 'round'
         ctx.lineJoin = 'round'
 
+        // ラッソストロークのインデックス（別途破線で描画するためスキップ）
+        const lassoIdx = selectionState?.lassoStrokeIndex ?? -1
+
         paths.forEach((path, index) => {
+            // ラッソストロークはここではスキップ（後で破線として描画）
+            if (index === lassoIdx) return
+
             ctx.beginPath()
-            // 選択されたパスはハイライト
+            // 選択されたパスは青でハイライト
             const isSelected = selectionState?.selectedIndices.includes(index)
             ctx.strokeStyle = isSelected ? '#3498db' : path.color
             ctx.lineWidth = path.width
@@ -146,27 +152,12 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
             }
         })
 
-        // 選択バウンディングボックスを描画
-        if (selectionState?.boundingBox) {
-            const bb = selectionState.boundingBox
-            ctx.strokeStyle = '#3498db'
-            ctx.lineWidth = 2
-            ctx.setLineDash([5, 5])
-            ctx.strokeRect(
-                bb.minX * canvas.width,
-                bb.minY * canvas.height,
-                (bb.maxX - bb.minX) * canvas.width,
-                (bb.maxY - bb.minY) * canvas.height
-            )
-            ctx.setLineDash([])
-        }
-
-        // ラッソパスを描画（選択用のループ線）
-        if (selectionState?.lassoPath) {
-            const lasso = selectionState.lassoPath
-            ctx.strokeStyle = 'rgba(52, 152, 219, 0.5)'
-            ctx.lineWidth = 2
-            ctx.setLineDash([3, 3])
+        // ラッソストロークを破線で描画（選択モード中のみ）
+        if (lassoIdx >= 0 && lassoIdx < paths.length) {
+            const lasso = paths[lassoIdx]
+            ctx.strokeStyle = 'rgba(52, 152, 219, 0.7)'
+            ctx.lineWidth = lasso.width
+            ctx.setLineDash([6, 4])
             ctx.beginPath()
             if (lasso.points.length > 0) {
                 ctx.moveTo(lasso.points[0].x * canvas.width, lasso.points[0].y * canvas.height)
@@ -178,6 +169,8 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
             }
             ctx.setLineDash([])
         }
+
+        // バウンディングボックスは表示しない（ユーザー要望）
     }, [paths, width, height, selectionState])
 
     // Canvas座標変換ヘルパー
