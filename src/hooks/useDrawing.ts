@@ -46,8 +46,9 @@ export const isScratchPattern = (path: DrawingPath): boolean => {
     const distance = Math.sqrt(dx * dx + dy * dy)
 
     // 距離が短すぎる場合はスキップ（ノイズ除去）
-    // 閾値を下げて高ズーム時も検出可能に
-    if (distance < 0.001) continue
+    // 閾値を下げて高ズーム時も検出可能に（500%以上対応）
+    if (distance < 0.0001) continue
+
 
     const angle = Math.atan2(dy, dx)
 
