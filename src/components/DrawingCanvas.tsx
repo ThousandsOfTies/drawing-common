@@ -118,7 +118,14 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     })
 
     // 再描画ロジック（pathsが変わった時）
+    // 注意: PDFPaneではuseDrawingから直接描画されるため、
+    // その描画が完了するまでクリアしないようにする
     useEffect(() => {
+        // 描画中はクリア&再描画をスキップ（PDFPaneのuseDrawingとの競合防止）
+        if (isCurrentlyDrawing) {
+            return
+        }
+
         const canvas = canvasRef.current
         if (!canvas) return
 
@@ -171,7 +178,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         }
 
         // バウンディングボックスは表示しない（ユーザー要望）
-    }, [paths, width, height, selectionState])
+    }, [paths, width, height, selectionState, isCurrentlyDrawing])
 
     // Canvas座標変換ヘルパー
     const toCanvasCoordinates = (e: React.MouseEvent | React.TouchEvent): { x: number, y: number } | null => {
