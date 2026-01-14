@@ -26,6 +26,7 @@ export interface DrawingCanvasProps {
     paths: DrawingPath[]
     isCtrlPressed?: boolean // パン操作用（Ctrl押下時は描画無効）
     stylusOnly?: boolean    // パームリジェクション（Apple Pencilのみ描画許可）
+    isDrawingExternal?: boolean // 親コンポーネントの描画状態（キャンバス再描画の制御用）
 
     // なげなわ選択（オプション）
     selectionState?: SelectionState | null
@@ -53,6 +54,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     paths,
     isCtrlPressed = false,
     stylusOnly = false,
+    isDrawingExternal = false,
     selectionState = null,
     onLassoComplete,
     onSelectionDragStart,
@@ -122,7 +124,9 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     // その描画が完了するまでクリアしないようにする
     useEffect(() => {
         // 描画中はクリア&再描画をスキップ（PDFPaneのuseDrawingとの競合防止）
-        if (isCurrentlyDrawing) {
+        // isDrawingExternal: 親コンポーネント(PDFPane)の描画状態
+        // isCurrentlyDrawing: このコンポーネント内部の描画状態
+        if (isDrawingExternal || isCurrentlyDrawing) {
             return
         }
 
@@ -178,7 +182,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         }
 
         // バウンディングボックスは表示しない（ユーザー要望）
-    }, [paths, width, height, selectionState, isCurrentlyDrawing])
+    }, [paths, width, height, selectionState, isCurrentlyDrawing, isDrawingExternal])
 
     // Canvas座標変換ヘルパー
     const toCanvasCoordinates = (e: React.MouseEvent | React.TouchEvent): { x: number, y: number } | null => {
