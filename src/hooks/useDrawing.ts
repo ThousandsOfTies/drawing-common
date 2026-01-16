@@ -198,6 +198,87 @@ export const useDrawing = (
     }
   }
 
+  /**
+   * Coalesced Events用の一括描画メソッド
+   * 複数のポイントを受け取り、補間の重複を避けながら一度に描画
+   * @param points 正規化されていない座標の配列 (canvas width/height で割る前)
+   */
+  const drawBatch = (points: Array<{ x: number, y: number }>) => {
+    const canvas = canvasRef.current
+    if (!isDrawing || !currentPathRef.current || !ctxRef.current || !canvas || points.length === 0) return
+
+    const ctx = ctxRef.current
+    const path = currentPathRef.current
+    const lastExistingPoint = path.points[path.points.length - 1]
+
+    // 正規化座標に変換
+    const normalizedPoints = points.map(p => ({
+      x: p.x / canvas.width,
+      y: p.y / canvas.height
+    }))
+
+    // 最後の既存ポイントから最初の新しいポイントまでのみ補間
+    const interpolatedPoints: Array<{ x: number, y: number }> = []
+
+    if (lastExistingPoint && normalizedPoints.length > 0) {
+      const firstNew = normalizedPoints[0]
+      const dx = firstNew.x - lastExistingPoint.x
+      const dy = firstNew.y - lastExistingPoint.y
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      const threshold = 5 / Math.min(canvas.width, canvas.height)
+
+      if (dist > threshold) {
+        const steps = Math.min(10, Math.floor(dist / (threshold / 2)))
+        for (let i = 1; i < steps; i++) {
+          const t = i / steps
+          interpolatedPoints.push({
+            x: lastExistingPoint.x + dx * t,
+            y: lastExistingPoint.y + dy * t
+          })
+        }
+      }
+    }
+
+    // 補間ポイント + 新しいポイントを追加
+    const allNewPoints = [...interpolatedPoints, ...normalizedPoints]
+
+    // ポイントを追加しながら描画
+    for (const point of allNewPoints) {
+      path.points.push(point)
+      const points = path.points
+      const len = points.length
+
+      if (len < 2) continue
+
+      if (len < 3) {
+        ctx.beginPath()
+        ctx.moveTo(points[0].x * canvas.width, points[0].y * canvas.height)
+        ctx.lineTo(points[1].x * canvas.width, points[1].y * canvas.height)
+        ctx.stroke()
+      } else {
+        const p0 = points[len - 3]
+        const p1 = points[len - 2]
+        const p2 = points[len - 1]
+
+        const cpX = p1.x * canvas.width
+        const cpY = p1.y * canvas.height
+        const endX = (p1.x + p2.x) / 2 * canvas.width
+        const endY = (p1.y + p2.y) / 2 * canvas.height
+
+        ctx.beginPath()
+        if (len === 3) {
+          ctx.moveTo(p0.x * canvas.width, p0.y * canvas.height)
+        } else {
+          const prevEndX = (p0.x + p1.x) / 2 * canvas.width
+          const prevEndY = (p0.y + p1.y) / 2 * canvas.height
+          ctx.moveTo(prevEndX, prevEndY)
+        }
+        ctx.quadraticCurveTo(cpX, cpY, endX, endY)
+        ctx.stroke()
+      }
+    }
+  }
+
   const stopDrawing = () => {
     if (isDrawing && currentPathRef.current) {
       const newPath = currentPathRef.current
@@ -236,6 +317,7 @@ export const useDrawing = (
     isDrawing,
     startDrawing,
     draw, // 名前変更 continueDrawing -> draw
+    drawBatch, // Coalesced Events用
     stopDrawing,
     cancelDrawing
   }
