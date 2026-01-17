@@ -155,46 +155,54 @@ export const useDrawing = (
     // 実際のタッチ/マウス位置を追加
     newPoints.push({ x: normalizedX, y: normalizedY })
 
-    // ポイントを順次追加して描画
+    // Phase 7.3: ポイントを順次追加して、一つのパスとして描画
     const ctx = ctxRef.current
+    const oldLength = path.points.length
 
+    // すべての新しいポイントをパスに追加
     for (const point of newPoints) {
       path.points.push(point)
-      const points = path.points
-      const len = points.length
+    }
 
-      if (len < 2) continue
+    const newLength = path.points.length
 
-      if (len < 3) {
-        // 点が2つの場合は直線
-        ctx.beginPath()
-        ctx.moveTo(points[0].x * canvas.width, points[0].y * canvas.height)
-        ctx.lineTo(points[1].x * canvas.width, points[1].y * canvas.height)
-        ctx.stroke()
+    // 一つの連続したパスとして描画
+    if (newLength >= 2) {
+      ctx.beginPath()
+
+      // 開始点を設定
+      if (oldLength === 0) {
+        ctx.moveTo(path.points[0].x * canvas.width, path.points[0].y * canvas.height)
       } else {
-        // 3点以上の場合はベジェ曲線で滑らかに
-        // 今回追加された点(p2: len-1)に向かって、p0(len-3)p1(len-2)を使って描画
-        const p0 = points[len - 3]
-        const p1 = points[len - 2]
-        const p2 = points[len - 1]
-
-        // 制御点を中間点に設定
-        const cpX = p1.x * canvas.width
-        const cpY = p1.y * canvas.height
-        const endX = (p1.x + p2.x) / 2 * canvas.width
-        const endY = (p1.y + p2.y) / 2 * canvas.height
-
-        ctx.beginPath()
-        if (len === 3) {
-          ctx.moveTo(p0.x * canvas.width, p0.y * canvas.height)
-        } else {
-          const prevEndX = (p0.x + p1.x) / 2 * canvas.width
-          const prevEndY = (p0.y + p1.y) / 2 * canvas.height
-          ctx.moveTo(prevEndX, prevEndY)
-        }
-        ctx.quadraticCurveTo(cpX, cpY, endX, endY)
-        ctx.stroke()
+        const lastOld = path.points[oldLength - 1]
+        ctx.moveTo(lastOld.x * canvas.width, lastOld.y * canvas.height)
       }
+
+      // すべての新しいセグメントを描画
+      const startIdx = Math.max(1, oldLength)
+      for (let i = startIdx; i < newLength; i++) {
+        const points = path.points
+
+        if (i === 1 && oldLength <= 1) {
+          // 最初の2ポイント：直線
+          ctx.lineTo(points[1].x * canvas.width, points[1].y * canvas.height)
+        } else {
+          // 3ポイント以上：2次ベジェ曲線
+          const p0 = points[i - 2]
+          const p1 = points[i - 1]
+          const p2 = points[i]
+
+          const cpX = p1.x * canvas.width
+          const cpY = p1.y * canvas.height
+          const endX = (p1.x + p2.x) / 2 * canvas.width
+          const endY = (p1.y + p2.y) / 2 * canvas.height
+
+          ctx.quadraticCurveTo(cpX, cpY, endX, endY)
+        }
+      }
+
+      // 最後に一度だけ描画
+      ctx.stroke()
     }
   }
 
