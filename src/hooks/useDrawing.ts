@@ -50,7 +50,7 @@ export const isScratchPattern = (path: DrawingPath): boolean => {
   // 正規化座標なので 0.05 = キャンバスの5%（画面1/6幅の往復は約0.028）
   if (area > 0.05) return false
 
-  // 2. ポイント密度チェック（drawBatch パスを除外）
+  // 1. ポイント密度チェック（drawBatch パスを除外）
   let pathLength = 0
   for (let i = 1; i < points.length; i++) {
     const dx = points[i].x - points[i - 1].x
@@ -66,7 +66,7 @@ export const isScratchPattern = (path: DrawingPath): boolean => {
   // 密度が高すぎる場合は drawBatch パス（スクラッチではない）
   if (density > 500) return false
 
-  // 3. 進行方向の角度を計算し、方向転換の回数を数える
+  // 2. 進行方向の角度を計算し、方向転換の回数を数える
   let directionChanges = 0
   let prevAngle: number | null = null
 
