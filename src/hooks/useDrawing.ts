@@ -46,8 +46,9 @@ export const isScratchPattern = (path: DrawingPath): boolean => {
   const height = maxY - minY
   const area = width * height
 
-  // 面積が大きすぎる場合はスクラッチではない（正規化座標なので 0.01 = キャンバスの1%）
-  if (area > 0.01) return false
+  // 面積が大きすぎる場合はスクラッチではない
+  // 正規化座標なので 0.05 = キャンバスの5%（画面1/6幅の往復は約0.028）
+  if (area > 0.05) return false
 
   // 2. ポイント密度チェック（drawBatch パスを除外）
   let pathLength = 0
