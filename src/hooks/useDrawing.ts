@@ -296,18 +296,24 @@ export const useDrawing = (
     if (isDrawing && currentPathRef.current) {
       const newPath = currentPathRef.current
 
-      // スクラッチパターンかどうかを判定
-      if (isScratchPattern(newPath)) {
-        // スクラッチの場合はonScratchCompleteを呼び出す
-        if (options.onScratchComplete) {
-          options.onScratchComplete(newPath)
-        }
-        // スクラッチ自体は保存しない（onPathCompleteは呼ばない）
-      } else {
-        // 通常の描画の場合
-        if (options.onPathComplete) {
-          options.onPathComplete(newPath)
-        }
+      // TEMPORARY: Disable scratch pattern detection due to false positives
+      // TODO: Fix scratch pattern detection logic for drawBatch-drawn paths
+      // if (isScratchPattern(newPath)) {
+      //   // スクラッチの場合はonScratchCompleteを呼び出す
+      //   if (options.onScratchComplete) {
+      //     options.onScratchComplete(newPath)
+      //   }
+      //   // スクラッチ自体は保存しない（onPathCompleteは呼ばない）
+      // } else {
+      //   // 通常の描画の場合
+      //   if (options.onPathComplete) {
+      //     options.onPathComplete(newPath)
+      //   }
+      // }
+
+      // Always call onPathComplete (scratch pattern detection disabled)
+      if (options.onPathComplete) {
+        options.onPathComplete(newPath)
       }
 
       currentPathRef.current = null
