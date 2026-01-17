@@ -36,35 +36,8 @@ export const isScratchPattern = (path: DrawingPath): boolean => {
   // 最低15ポイント必要（短すぎる線はスクラッチではない）
   if (points.length < 15) return false
 
-  // 1. バウンディングボックスの面積チェック
-  const minX = Math.min(...points.map(p => p.x))
-  const maxX = Math.max(...points.map(p => p.x))
-  const minY = Math.min(...points.map(p => p.y))
-  const maxY = Math.max(...points.map(p => p.y))
-
-  const width = maxX - minX
-  const height = maxY - minY
-  const area = width * height
-
-  // 面積が大きすぎる場合はスクラッチではない
-  // 正規化座標なので 0.05 = キャンバスの5%（画面1/6幅の往復は約0.028）
-  if (area > 0.05) return false
-
-  // 1. ポイント密度チェック（drawBatch パスを除外）
-  let pathLength = 0
-  for (let i = 1; i < points.length; i++) {
-    const dx = points[i].x - points[i - 1].x
-    const dy = points[i].y - points[i - 1].y
-    pathLength += Math.sqrt(dx * dx + dy * dy)
-  }
-
-  // パス長が0の場合は除外（すべてのポイントが同じ位置）
-  if (pathLength < 0.0001) return false
-
-  const density = points.length / pathLength
-
-  // 密度が高すぎる場合は drawBatch パス（スクラッチではない）
-  if (density > 500) return false
+  // drawBatch パスは約130ポイントなので除外
+  if (points.length > 80) return false
 
   // 2. 進行方向の角度を計算し、方向転換の回数を数える
   let directionChanges = 0
