@@ -36,7 +36,36 @@ export const isScratchPattern = (path: DrawingPath): boolean => {
   // 最低15ポイント必要（短すぎる線はスクラッチではない）
   if (points.length < 15) return false
 
-  // 進行方向の角度を計算し、方向転換の回数を数える
+  // 1. バウンディングボックスの面積チェック
+  const minX = Math.min(...points.map(p => p.x))
+  const maxX = Math.max(...points.map(p => p.x))
+  const minY = Math.min(...points.map(p => p.y))
+  const maxY = Math.max(...points.map(p => p.y))
+
+  const width = maxX - minX
+  const height = maxY - minY
+  const area = width * height
+
+  // 面積が大きすぎる場合はスクラッチではない（正規化座標なので 0.01 = キャンバスの1%）
+  if (area > 0.01) return false
+
+  // 2. ポイント密度チェック（drawBatch パスを除外）
+  let pathLength = 0
+  for (let i = 1; i < points.length; i++) {
+    const dx = points[i].x - points[i - 1].x
+    const dy = points[i].y - points[i - 1].y
+    pathLength += Math.sqrt(dx * dx + dy * dy)
+  }
+
+  // パス長が0の場合は除外（すべてのポイントが同じ位置）
+  if (pathLength < 0.0001) return false
+
+  const density = points.length / pathLength
+
+  // 密度が高すぎる場合は drawBatch パス（スクラッチではない）
+  if (density > 500) return false
+
+  // 3. 進行方向の角度を計算し、方向転換の回数を数える
   let directionChanges = 0
   let prevAngle: number | null = null
 
@@ -46,9 +75,7 @@ export const isScratchPattern = (path: DrawingPath): boolean => {
     const distance = Math.sqrt(dx * dx + dy * dy)
 
     // 距離が短すぎる場合はスキップ（ノイズ除去）
-    // 閾値を下げて高ズーム時も検出可能に（500%以上対応）
     if (distance < 0.0001) continue
-
 
     const angle = Math.atan2(dy, dx)
 
@@ -309,10 +336,18 @@ export const useDrawing = (
     if (isDrawing && currentPathRef.current) {
       const newPath = currentPathRef.current
 
-      // Scratch pattern detection temporarily disabled
-      // Will be re-enabled with improved logic in future update
-      if (options.onPathComplete) {
-        options.onPathComplete(newPath)
+      // Check if this is a scratch gesture
+      if (isScratchPattern(newPath)) {
+        // For scratch gestures, call onScratchComplete to delete intersecting paths
+        if (options.onScratchComplete) {
+          options.onScratchComplete(newPath)
+        }
+        // Don't save scratch gestures as regular paths
+      } else {
+        // For normal drawing, save the path
+        if (options.onPathComplete) {
+          options.onPathComplete(newPath)
+        }
       }
 
       currentPathRef.current = null
