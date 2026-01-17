@@ -204,8 +204,21 @@ export const useDrawing = (
    * @param points 正規化されていない座標の配列 (canvas width/height で割る前)
    */
   const drawBatch = (points: Array<{ x: number, y: number }>) => {
+    console.log('[drawBatch] Called with', points.length, 'points')
     const canvas = canvasRef.current
-    if (!isDrawing || !currentPathRef.current || !ctxRef.current || !canvas || points.length === 0) return
+
+    console.log('[drawBatch] Checks:', {
+      isDrawing,
+      hasPath: !!currentPathRef.current,
+      hasCtx: !!ctxRef.current,
+      hasCanvas: !!canvas,
+      pointsLength: points.length
+    })
+
+    if (!isDrawing || !currentPathRef.current || !ctxRef.current || !canvas || points.length === 0) {
+      console.log('[drawBatch] Early return!')
+      return
+    }
 
     const ctx = ctxRef.current
     const path = currentPathRef.current
