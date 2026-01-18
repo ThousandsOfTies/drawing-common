@@ -248,53 +248,57 @@ export const useDrawing = (
     if (newLength === oldLength) return
 
     // 描画ループ
-    // バッチ処理：moveTo/strokeをループ外に出して、1回のパスとして描画する
-    // これにより、セグメント間の重なり（Mura）を排除し、パフォーマンスを向上させる
-    const startIdx = Math.max(1, oldLength)
+    // Catmull-Rom Spline (Interpolating Spline) を使用して、点の上を通過する曲線を生成する
+    // Midpoint Spline（以前の実装）は「角の内側」を通るため、高速描画時（点が粗い時）にショートカット（弦）のような見た目になる問題を解決。
 
-    if (newLength > startIdx) {
+    // 少なくとも2点あれば線は引ける
+    if (newLength >= 2) {
       ctx.beginPath()
-      let isFirstDrawInBatch = true
 
-      for (let i = startIdx; i < newLength; i++) {
-        if (i === 1) {
-          // i=1: 最初の直線 (p0-p1)
-          // 常にスキップして、次の i=2 で p0 から曲線を開始する
-          continue
-        }
-
-        // i >= 2: 曲線 (p0-p1-p2)
-        const p0 = path.points[i - 2]
-        const p1 = path.points[i - 1]
-        const p2 = path.points[i]
-
-        const cpX = p1.x * canvas.width
-        const cpY = p1.y * canvas.height
-        const endX = (p1.x + p2.x) / 2 * canvas.width
-        const endY = (p1.y + p2.y) / 2 * canvas.height
-
-        // バッチの最初のセグメントだけ moveTo が必要
-        // それ以降は canvas context が現在のペン位置を記憶しているため不要
-        if (isFirstDrawInBatch) {
-          if (i === 2) {
-            // ストローク全体の開始点 (p0)
-            ctx.moveTo(p0.x * canvas.width, p0.y * canvas.height)
-          } else {
-            // 前回のバッチからの継続点 (p0-p1の中点)
-            const prevEndX = (p0.x + p1.x) / 2 * canvas.width
-            const prevEndY = (p0.y + p1.y) / 2 * canvas.height
-            ctx.moveTo(prevEndX, prevEndY)
-          }
-          isFirstDrawInBatch = false
-        }
-
-        ctx.quadraticCurveTo(cpX, cpY, endX, endY)
+      // Start of the batch drawing
+      if (startIdx <= 1) {
+        // First point of the entire path
+        ctx.moveTo(path.points[0].x * canvas.width, path.points[0].y * canvas.height)
+      } else {
+        // Continuing from previous batch - move to the last drawn point (p1 of the last segment)
+        // path.points[startIdx-1] is the point we reached last time
+        const prev = path.points[startIdx - 1]
+        ctx.moveTo(prev.x * canvas.width, prev.y * canvas.height)
       }
 
-      // 描画すべきセグメントがあった場合のみ stroke
-      if (!isFirstDrawInBatch) {
-        ctx.stroke()
+      // Draw segments from startIdx-1 to newLength-1
+      // Loop variable i represents the INDEX OF THE START POINT of the segment (p1)
+      // Segment goes from p1 (i) to p2 (i+1)
+      const loopStart = Math.max(0, startIdx - 1)
+
+      for (let i = loopStart; i < newLength - 1; i++) {
+        const p0 = path.points[i - 1] || path.points[i] // Boundary: duplicate start
+        const p1 = path.points[i]
+        const p2 = path.points[i + 1]
+        const p3 = path.points[i + 2] || p2 // Boundary: duplicate end
+
+        // Catmull-Rom to Cubic Bezier conversion
+        // cp1 = p1 + (p2 - p0) / 6
+        // cp2 = p2 - (p3 - p1) / 6
+
+        const w = canvas.width
+        const h = canvas.height
+
+        const p0x = p0.x * w, p0y = p0.y * h
+        const p1x = p1.x * w, p1y = p1.y * h
+        const p2x = p2.x * w, p2y = p2.y * h
+        const p3x = p3.x * w, p3y = p3.y * h
+
+        const cp1x = p1x + (p2x - p0x) / 6
+        const cp1y = p1y + (p2y - p0y) / 6
+
+        const cp2x = p2x - (p3x - p1x) / 6
+        const cp2y = p2y - (p3y - p1y) / 6
+
+        ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2x, p2y)
       }
+
+      ctx.stroke()
     }
   }
 
