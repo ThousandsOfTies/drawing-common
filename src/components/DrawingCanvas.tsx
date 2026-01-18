@@ -309,9 +309,23 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         }
     }
 
+    // ペン入力の最終時刻（ゴーストマウスイベント対策）
+    const lastPenTimeRef = useRef(0)
+
     // 統合ハンドラ: Pointer Events
     const handlePointerDown = (e: React.PointerEvent) => {
+        // パームリジェクション (Touchは無視)
         if (stylusOnly && isDrawing && e.pointerType === 'touch') return
+
+        // ゴーストマウス対策: ペン入力直後(500ms以内)のマウスイベントは無視
+        if (e.pointerType === 'mouse' && Date.now() - lastPenTimeRef.current < 500) {
+            return
+        }
+
+        // ペン入力時刻を更新
+        if (e.pointerType === 'pen') {
+            lastPenTimeRef.current = Date.now()
+        }
 
         if (hasSelection && isDrawing) {
             const point = toNormalizedCoordinates(e)
@@ -348,7 +362,14 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     }
 
     const handlePointerMove = (e: React.PointerEvent) => {
-        if (stylusOnly && isDrawing && e.pointerType !== 'pen') return
+        if (stylusOnly && isDrawing && e.pointerType === 'touch') return
+
+        // ゴーストマウス対策 & ペン時刻更新
+        if (e.pointerType === 'mouse') {
+            if (Date.now() - lastPenTimeRef.current < 500) return
+        } else if (e.pointerType === 'pen') {
+            lastPenTimeRef.current = Date.now()
+        }
 
         if (selectionState?.isDragging) {
             const point = toNormalizedCoordinates(e)
@@ -397,7 +418,18 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     }
 
     const handlePointerUp = (e: React.PointerEvent) => {
-        (e.target as Element).releasePointerCapture(e.pointerId)
+        // パーム＆ゴースト対策 (Upはそこまで厳密でなくても良いが念のため)
+        if (stylusOnly && isDrawing && e.pointerType === 'touch') {
+            (e.target as Element).releasePointerCapture(e.pointerId)
+            return
+        }
+        if (e.pointerType === 'mouse' && Date.now() - lastPenTimeRef.current < 500) {
+            (e.target as Element).releasePointerCapture(e.pointerId)
+            return
+        }
+        if (e.pointerType === 'pen') lastPenTimeRef.current = Date.now()
+
+            (e.target as Element).releasePointerCapture(e.pointerId)
 
         if (selectionState?.isDragging) {
             onSelectionDragEnd?.()
