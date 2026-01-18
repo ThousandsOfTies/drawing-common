@@ -266,8 +266,8 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
 
     // 統合ハンドラ: Pointer Events (Coalesced Events対応)
     const handlePointerDown = (e: React.PointerEvent) => {
-        // パームリジェクション: stylusOnlyかつペン以外の場合は無視
-        if (stylusOnly && isDrawing && e.pointerType !== 'pen') {
+        // パームリジェクション: stylusOnly時はタッチ（指）のみ無視し、ペンとマウスは許可
+        if (stylusOnly && isDrawing && e.pointerType === 'touch') {
             return
         }
 
