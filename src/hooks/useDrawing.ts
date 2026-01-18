@@ -72,8 +72,8 @@ export const isScratchPattern = (path: DrawingPath): boolean => {
 }
 
 // useDrawing.ts
-import { useRef, useEffect, useState, useCallback } from 'react'
-import { DrawingPath, DrawingPoint } from '../types'
+import { useRef, useState } from 'react'
+import type { DrawingPath } from '../types'
 
 interface UseDrawingOptions {
   width: number
@@ -90,18 +90,13 @@ export const useDrawing = (
   options: UseDrawingOptions
 ) => {
   const [isDrawing, setIsDrawing] = useState(false)
-  const isDrawingRef = useRef(false)
   const currentPathRef = useRef<DrawingPath | null>(null)
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
 
-  const startDrawing = useCallback((x: number, y: number) => {
-    // Prevent double start
-    if (isDrawingRef.current) return
-
+  const startDrawing = (x: number, y: number) => {
     const canvas = canvasRef.current
     if (!canvas) return
 
-    isDrawingRef.current = true
     setIsDrawing(true)
 
     // 正規化座標で保存（0-1の範囲）
@@ -120,11 +115,11 @@ export const useDrawing = (
     ctxRef.current.lineWidth = options.width
     ctxRef.current.lineCap = 'round'
     ctxRef.current.lineJoin = 'round'
-  }, [options.color, options.width, canvasRef])
+  }
 
   const draw = (x: number, y: number) => {
     const canvas = canvasRef.current
-    if (!isDrawingRef.current || !currentPathRef.current || !ctxRef.current || !canvas) return
+    if (!isDrawing || !currentPathRef.current || !ctxRef.current || !canvas) return
 
     // 正規化
     const normalizedX = x / canvas.width
@@ -211,149 +206,121 @@ export const useDrawing = (
   const drawBatch = (points: Array<{ x: number, y: number }>) => {
     const canvas = canvasRef.current
 
-    if (!isDrawingRef.current || !currentPathRef.current || !ctxRef.current || !canvas || points.length === 0) {
+    if (!isDrawing || !currentPathRef.current || !ctxRef.current || !canvas || points.length === 0) {
       return
     }
 
+    const ctx = ctxRef.current
     const path = currentPathRef.current
+    const lastExistingPoint = path.points[path.points.length - 1]
 
+    // 正規化座標に変換
     const normalizedPoints = points.map(p => ({
       x: p.x / canvas.width,
       y: p.y / canvas.height
     }))
 
-    const ctx = ctxRef.current!
+    // 最後の既存ポイントから最初の新しいポイントまでのみ補間
+    const interpolatedPoints: Array<{ x: number, y: number }> = []
 
-    // Coalesced Eventsからの入力は高精細なので補間は不要
-    // 単純にポイントを追加し、描画ロジックを回す
-    const allNewPoints = normalizedPoints
-    // ポイントをまとめて追加（重複除外）
-    // ムラ防止のため、フィルタを少し強める (0.5px -> 1.5px)
-    // ポイントをまとめて追加（重複除外）
-    // ムラ防止のため、フィルタを調整 (3.0px -> 0.5px)
-    // 3.0pxだと描画が粗くなり、角がショートカット（弦）されてしまう。
-    // Mura（点の重なり）は一括描画（single stroke）で解決する。
-    const minDistance = 0.5 / Math.min(canvas.width, canvas.height)
-    const oldLength = path.points.length
+    if (lastExistingPoint && normalizedPoints.length > 0) {
+      const firstNew = normalizedPoints[0]
+      const dx = firstNew.x - lastExistingPoint.x
+      const dy = firstNew.y - lastExistingPoint.y
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      const threshold = 5 / Math.min(canvas.width, canvas.height)
 
-    for (const point of allNewPoints) {
-      const currentLast = path.points[path.points.length - 1]
-      // 重複・ノイズ除去
-      if (currentLast) {
-        const dx = point.x - currentLast.x
-        const dy = point.y - currentLast.y
-        if (Math.sqrt(dx * dx + dy * dy) < minDistance) {
-          continue
+      if (dist > threshold) {
+        const steps = Math.min(10, Math.floor(dist / (threshold / 2)))
+        for (let i = 1; i < steps; i++) {
+          const t = i / steps
+          interpolatedPoints.push({
+            x: lastExistingPoint.x + dx * t,
+            y: lastExistingPoint.y + dy * t
+          })
         }
       }
-      path.points.push(point)
     }
 
-    const newLength = path.points.length
-    if (newLength === oldLength) return
+    // 補間ポイント + 新しいポイントを追加
+    const allNewPoints = [...interpolatedPoints, ...normalizedPoints]
 
-    // 描画ループ
-    // Catmull-Rom Spline (Interpolating Spline) を使用して、点の上を通過する曲線を生成する
-    // Midpoint Spline（以前の実装）は「角の内側」を通るため、高速描画時（点が粗い時）にショートカット（弦）のような見た目になる問題を解決。
+    // ポイントを追加しながら描画
+    for (const point of allNewPoints) {
+      path.points.push(point)
+      const points = path.points
+      const len = points.length
 
-    // startIdxの定義を復元
-    const startIdx = Math.max(1, oldLength)
+      if (len < 2) continue
 
-    // 少なくとも2点あれば線は引ける
-    if (newLength >= 2) {
-      ctx.beginPath()
-
-      // Start of the batch drawing
-      if (startIdx <= 1) {
-        // First point of the entire path
-        ctx.moveTo(path.points[0].x * canvas.width, path.points[0].y * canvas.height)
+      if (len < 3) {
+        ctx.beginPath()
+        ctx.moveTo(points[0].x * canvas.width, points[0].y * canvas.height)
+        ctx.lineTo(points[1].x * canvas.width, points[1].y * canvas.height)
+        ctx.stroke()
       } else {
-        // Continuing from previous batch - move to the last drawn point (p1 of the last segment)
-        // path.points[startIdx-1] is the point we reached last time
-        const prev = path.points[startIdx - 1]
-        ctx.moveTo(prev.x * canvas.width, prev.y * canvas.height)
+        const p0 = points[len - 3]
+        const p1 = points[len - 2]
+        const p2 = points[len - 1]
+
+        const cpX = p1.x * canvas.width
+        const cpY = p1.y * canvas.height
+        const endX = (p1.x + p2.x) / 2 * canvas.width
+        const endY = (p1.y + p2.y) / 2 * canvas.height
+
+        ctx.beginPath()
+        if (len === 3) {
+          ctx.moveTo(p0.x * canvas.width, p0.y * canvas.height)
+        } else {
+          const prevEndX = (p0.x + p1.x) / 2 * canvas.width
+          const prevEndY = (p0.y + p1.y) / 2 * canvas.height
+          ctx.moveTo(prevEndX, prevEndY)
+        }
+        ctx.quadraticCurveTo(cpX, cpY, endX, endY)
+        ctx.stroke()
       }
-
-      // Draw segments from startIdx-1 to newLength-1
-      // Loop variable i represents the INDEX OF THE START POINT of the segment (p1)
-      // Segment goes from p1 (i) to p2 (i+1)
-      const loopStart = Math.max(0, startIdx - 1)
-
-      for (let i = loopStart; i < newLength - 1; i++) {
-        const p0 = path.points[i - 1] || path.points[i] // Boundary: duplicate start
-        const p1 = path.points[i]
-        const p2 = path.points[i + 1]
-        const p3 = path.points[i + 2] || p2 // Boundary: duplicate end
-
-        // Catmull-Rom to Cubic Bezier conversion
-        // cp1 = p1 + (p2 - p0) / 6
-        // cp2 = p2 - (p3 - p1) / 6
-
-        const w = canvas.width
-        const h = canvas.height
-
-        const p0x = p0.x * w, p0y = p0.y * h
-        const p1x = p1.x * w, p1y = p1.y * h
-        const p2x = p2.x * w, p2y = p2.y * h
-        const p3x = p3.x * w, p3y = p3.y * h
-
-        const cp1x = p1x + (p2x - p0x) / 6
-        const cp1y = p1y + (p2y - p0y) / 6
-
-        const cp2x = p2x - (p3x - p1x) / 6
-        const cp2y = p2y - (p3y - p1y) / 6
-
-        ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2x, p2y)
-      }
-
-      ctx.stroke()
     }
   }
 
-  const stopDrawing = useCallback(() => {
-    // Prevent double firing using synchronous ref
-    if (!isDrawingRef.current) return
-    isDrawingRef.current = false
-
-    // Sync React state for UI updates
-    setIsDrawing(false)
-
-    if (currentPathRef.current) {
+  const stopDrawing = () => {
+    if (isDrawing && currentPathRef.current) {
       const newPath = currentPathRef.current
-      const canvas = canvasRef.current
-      const ctx = ctxRef.current
 
-      // ポイントが2つだけで終了した場合（直線）
-      // drawBatchでは二重線防止のために描画をスキップしているので、ここで描画する
-      if (newPath.points.length === 2 && canvas && ctx) {
-        const p0 = newPath.points[0]
-        const p1 = newPath.points[1]
-        ctx.beginPath()
-        ctx.moveTo(p0.x * canvas.width, p0.y * canvas.height)
-        ctx.lineTo(p1.x * canvas.width, p1.y * canvas.height)
-        ctx.stroke()
-      }
+      // TEMPORARY: Disable scratch pattern detection due to false positives
+      // TODO: Fix scratch pattern detection logic for drawBatch-drawn paths
+      // if (isScratchPattern(newPath)) {
+      //   // スクラッチの場合はonScratchCompleteを呼び出す
+      //   if (options.onScratchComplete) {
+      //     options.onScratchComplete(newPath)
+      //   }
+      //   // スクラッチ自体は保存しない（onPathCompleteは呼ばない）
+      // } else {
+      //   // 通常の描画の場合
+      //   if (options.onPathComplete) {
+      //     options.onPathComplete(newPath)
+      //   }
+      // }
 
       // Always call onPathComplete (scratch pattern detection disabled)
       if (options.onPathComplete) {
         options.onPathComplete(newPath)
       }
-    }
 
-    currentPathRef.current = null
-    ctxRef.current = null
-  }, [options, canvasRef])
+      currentPathRef.current = null
+      ctxRef.current = null
+      setIsDrawing(false)
+    }
+  }
 
   /**
    * 描画をキャンセル（パスを保存せずにリセット）
    * なげなわ選択モード発動時などに使用
    */
-  const cancelDrawing = useCallback(() => {
+  const cancelDrawing = () => {
     currentPathRef.current = null
     ctxRef.current = null
-    isDrawingRef.current = false
     setIsDrawing(false)
-  }, [])
+  }
 
   return {
     isDrawing,
@@ -364,4 +331,3 @@ export const useDrawing = (
     cancelDrawing
   }
 }
-
