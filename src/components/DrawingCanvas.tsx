@@ -77,6 +77,8 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
 
     // 2本指タップ検出用
     const twoFingerTapStartRef = useRef<{ time: number, dist: number } | null>(null)
+    const lastPathTimeRef = useRef(0)
+    const isTouchActiveRef = useRef(false)
 
     // useDrawing hook
     const {
@@ -88,6 +90,12 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         width: size,
         color,
         onPathComplete: (path) => {
+            const now = Date.now()
+            if (now - lastPathTimeRef.current < 50) {
+                return
+            }
+            lastPathTimeRef.current = now
+
             // なげなわ選択が有効で、ループとして認識された場合はパスを追加しない
             if (onLassoComplete && onLassoComplete(path)) {
                 return
@@ -265,6 +273,9 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
 
     // 統合ハンドラ: マウス
     const handleMouseDown = (e: React.MouseEvent) => {
+        // タッチ操作中はマウスイベントを無視
+        if (isTouchActiveRef.current) return
+
         // 選択中の場合
         if (hasSelection && isDrawing) {
             const point = toNormalizedCoordinates(e)
@@ -287,6 +298,8 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     }
 
     const handleMouseMove = (e: React.MouseEvent) => {
+        if (isTouchActiveRef.current) return
+
         // 選択をドラッグ中
         if (selectionState?.isDragging) {
             const point = toNormalizedCoordinates(e)
@@ -321,6 +334,8 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
 
     // 統合ハンドラ: タッチ
     const handleTouchStart = (e: React.TouchEvent) => {
+        isTouchActiveRef.current = true
+
         // 2本指タップUndo検出
         if (e.touches.length === 2) {
             const t1 = e.touches[0]
@@ -384,6 +399,9 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     }
 
     const handleTouchEnd = (e: React.TouchEvent) => {
+        // 重複防止フラグ解除（遅延）
+        setTimeout(() => isTouchActiveRef.current = false, 500)
+
         // 選択ドラッグ終了
         if (selectionState?.isDragging) {
             onSelectionDragEnd?.()
