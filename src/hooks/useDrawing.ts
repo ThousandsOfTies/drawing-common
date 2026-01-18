@@ -72,8 +72,8 @@ export const isScratchPattern = (path: DrawingPath): boolean => {
 }
 
 // useDrawing.ts
-import { useRef, useState } from 'react'
-import type { DrawingPath } from '../types'
+import { useRef, useEffect, useState, useCallback } from 'react'
+import { DrawingPath, DrawingPoint } from '../types'
 
 interface UseDrawingOptions {
   width: number
@@ -90,13 +90,18 @@ export const useDrawing = (
   options: UseDrawingOptions
 ) => {
   const [isDrawing, setIsDrawing] = useState(false)
+  const isDrawingRef = useRef(false)
   const currentPathRef = useRef<DrawingPath | null>(null)
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
 
-  const startDrawing = (x: number, y: number) => {
+  const startDrawing = useCallback((x: number, y: number) => {
+    // Prevent double start
+    if (isDrawingRef.current) return
+
     const canvas = canvasRef.current
     if (!canvas) return
 
+    isDrawingRef.current = true
     setIsDrawing(true)
 
     // 正規化座標で保存（0-1の範囲）
@@ -115,7 +120,7 @@ export const useDrawing = (
     ctxRef.current.lineWidth = options.width
     ctxRef.current.lineCap = 'round'
     ctxRef.current.lineJoin = 'round'
-  }
+  }, [options.color, options.width, canvasRef])
 
   const draw = (x: number, y: number) => {
     const canvas = canvasRef.current
@@ -305,8 +310,15 @@ export const useDrawing = (
     }
   }
 
-  const stopDrawing = () => {
-    if (isDrawing && currentPathRef.current) {
+  const stopDrawing = useCallback(() => {
+    // Prevent double firing using synchronous ref
+    if (!isDrawingRef.current) return
+    isDrawingRef.current = false
+
+    // Sync React state for UI updates
+    setIsDrawing(false)
+
+    if (currentPathRef.current) {
       const newPath = currentPathRef.current
       const canvas = canvasRef.current
       const ctx = ctxRef.current
@@ -322,20 +334,6 @@ export const useDrawing = (
         ctx.stroke()
       }
 
-      // TEMPORARY: Disable scratch pattern detection due to false positives
-      // TODO: Fix scratch pattern detection logic for drawBatch-drawn paths
-      /*
-      if (isScratchPattern(newPath)) {
-        if (options.onScratchComplete) {
-          options.onScratchComplete(newPath)
-        }
-      } else {
-        if (options.onPathComplete) {
-          options.onPathComplete(newPath)
-        }
-      }
-      */
-
       // Always call onPathComplete (scratch pattern detection disabled)
       if (options.onPathComplete) {
         options.onPathComplete(newPath)
@@ -344,18 +342,18 @@ export const useDrawing = (
 
     currentPathRef.current = null
     ctxRef.current = null
-    setIsDrawing(false)
-  }
+  }, [options, canvasRef])
 
   /**
    * 描画をキャンセル（パスを保存せずにリセット）
    * なげなわ選択モード発動時などに使用
    */
-  const cancelDrawing = () => {
+  const cancelDrawing = useCallback(() => {
     currentPathRef.current = null
     ctxRef.current = null
+    isDrawingRef.current = false
     setIsDrawing(false)
-  }
+  }, [])
 
   return {
     isDrawing,
