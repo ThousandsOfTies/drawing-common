@@ -224,7 +224,11 @@ export const useDrawing = (
     const allNewPoints = normalizedPoints
     // ポイントをまとめて追加（重複除外）
     // ムラ防止のため、フィルタを少し強める (0.5px -> 1.5px)
-    const minDistance = 3.0 / Math.min(canvas.width, canvas.height)
+    // ポイントをまとめて追加（重複除外）
+    // ムラ防止のため、フィルタを調整 (3.0px -> 0.5px)
+    // 3.0pxだと描画が粗くなり、角がショートカット（弦）されてしまう。
+    // Mura（点の重なり）は一括描画（single stroke）で解決する。
+    const minDistance = 0.5 / Math.min(canvas.width, canvas.height)
     const oldLength = path.points.length
 
     for (const point of allNewPoints) {
@@ -244,40 +248,51 @@ export const useDrawing = (
     if (newLength === oldLength) return
 
     // 描画ループ
+    // バッチ処理：moveTo/strokeをループ外に出して、1回のパスとして描画する
+    // これにより、セグメント間の重なり（Mura）を排除し、パフォーマンスを向上させる
     const startIdx = Math.max(1, oldLength)
 
-    for (let i = startIdx; i < newLength; i++) {
-      const points = path.points
+    if (newLength > startIdx) {
+      ctx.beginPath()
+      let isFirstDrawInBatch = true
 
-      if (i === 1) {
-        // i=1: 最初の直線 (p0-p1)
-        // 二重線や弦アーティファクトを防ぐため、常にスキップする。
-        // ※2点だけで終了した場合は stopDrawing で描画される。
-        continue
-      } else {
+      for (let i = startIdx; i < newLength; i++) {
+        if (i === 1) {
+          // i=1: 最初の直線 (p0-p1)
+          // 常にスキップして、次の i=2 で p0 から曲線を開始する
+          continue
+        }
+
         // i >= 2: 曲線 (p0-p1-p2)
-        const p0 = points[i - 2]
-        const p1 = points[i - 1]
-        const p2 = points[i]
+        const p0 = path.points[i - 2]
+        const p1 = path.points[i - 1]
+        const p2 = path.points[i]
 
         const cpX = p1.x * canvas.width
         const cpY = p1.y * canvas.height
         const endX = (p1.x + p2.x) / 2 * canvas.width
         const endY = (p1.y + p2.y) / 2 * canvas.height
 
-        ctx.beginPath()
-        if (i === 2) {
-          // 最初の曲線セグメント
-          // i=1の直線をスキップしたので、必ずp0から滑らかな曲線を開始する
-          ctx.moveTo(p0.x * canvas.width, p0.y * canvas.height)
-        } else {
-          // 中間のセグメント
-          const prevEndX = (p0.x + p1.x) / 2 * canvas.width
-          const prevEndY = (p0.y + p1.y) / 2 * canvas.height
-          ctx.moveTo(prevEndX, prevEndY)
+        // バッチの最初のセグメントだけ moveTo が必要
+        // それ以降は canvas context が現在のペン位置を記憶しているため不要
+        if (isFirstDrawInBatch) {
+          if (i === 2) {
+            // ストローク全体の開始点 (p0)
+            ctx.moveTo(p0.x * canvas.width, p0.y * canvas.height)
+          } else {
+            // 前回のバッチからの継続点 (p0-p1の中点)
+            const prevEndX = (p0.x + p1.x) / 2 * canvas.width
+            const prevEndY = (p0.y + p1.y) / 2 * canvas.height
+            ctx.moveTo(prevEndX, prevEndY)
+          }
+          isFirstDrawInBatch = false
         }
 
         ctx.quadraticCurveTo(cpX, cpY, endX, endY)
+      }
+
+      // 描画すべきセグメントがあった場合のみ stroke
+      if (!isFirstDrawInBatch) {
         ctx.stroke()
       }
     }
