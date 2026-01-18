@@ -87,11 +87,14 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         startDrawing: hookStartDrawing,
         draw: hookContinueDrawing,
         drawBatch,
-        stopDrawing: hookStopDrawing
+        stopDrawing: hookStopDrawing,
+        cancelDrawing: hookCancelDrawing
     } = useDrawing(liveCanvasRef, {
         width: size,
         color,
         onPathComplete: (path) => {
+            addDebugLog(`🎁 Path Added (pts=${path.points.length})`)
+
             // なげなわ選択
             if (onLassoComplete && onLassoComplete(path)) {
                 // Live Canvasをクリア
@@ -99,7 +102,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
                 if (ctx && liveCanvasRef.current) ctx.clearRect(0, 0, liveCanvasRef.current.width, liveCanvasRef.current.height)
                 return
             }
-            onPathAdd(path)
+            onPathAdd?.(path)
 
             // 描画完了後、Live Canvas（上層）をクリアして、Static Canvas（下層）への反映と交代する
             const ctx = liveCanvasRef.current?.getContext('2d')
@@ -364,20 +367,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         }
     }
 
-    const {
-        startDrawing: hookStartDrawing,
-        drawBatch,
-        continueDrawing: hookContinueDrawing,
-        stopDrawing: hookStopDrawing,
-        cancelDrawing: hookCancelDrawing
-    } = useDrawing(liveCanvasRef, {
-        onPathComplete: (path) => {
-            addDebugLog(`🎁 Path Added (pts=${path.points.length})`)
-            onPathAdd?.(path)
-        },
-        minDistance: 2,
-        curveTightness: 0
-    })
+
 
     const handlePointerMove = (e: React.PointerEvent) => {
         // addDebugLog(`↔️ Move: ${e.pointerType}`) // Too noisy for move? Maybe just keep it for now.
