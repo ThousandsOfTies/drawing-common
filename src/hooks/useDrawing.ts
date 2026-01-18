@@ -224,7 +224,7 @@ export const useDrawing = (
     const allNewPoints = normalizedPoints
     // ポイントをまとめて追加（重複除外）
     // ムラ防止のため、フィルタを少し強める (0.5px -> 1.5px)
-    const minDistance = 1.5 / Math.min(canvas.width, canvas.height)
+    const minDistance = 3.0 / Math.min(canvas.width, canvas.height)
     const oldLength = path.points.length
 
     for (const point of allNewPoints) {
