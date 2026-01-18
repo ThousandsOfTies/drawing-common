@@ -399,8 +399,8 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     }
 
     const handleTouchEnd = (e: React.TouchEvent) => {
-        // 重複防止フラグ解除（遅延）
-        setTimeout(() => isTouchActiveRef.current = false, 500)
+        // 重複防止フラグ解除（しない：一度タッチ操作をしたらマウスは永続的に無視）
+        // setTimeout(() => isTouchActiveRef.current = false, 500)
 
         // 選択ドラッグ終了
         if (selectionState?.isDragging) {
