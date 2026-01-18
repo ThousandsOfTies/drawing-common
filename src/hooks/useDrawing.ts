@@ -286,67 +286,66 @@ export const useDrawing = (
       ctx.stroke()
     }
   }
-}
 
-const stopDrawing = () => {
-  if (isDrawing && currentPathRef.current) {
-    const newPath = currentPathRef.current
-    const canvas = canvasRef.current
-    const ctx = ctxRef.current
+  const stopDrawing = () => {
+    if (isDrawing && currentPathRef.current) {
+      const newPath = currentPathRef.current
+      const canvas = canvasRef.current
+      const ctx = ctxRef.current
 
-    // ポイントが2つだけで終了した場合（直線）
-    // drawBatchでは二重線防止のために描画をスキップしているので、ここで描画する
-    if (newPath.points.length === 2 && canvas && ctx) {
-      const p0 = newPath.points[0]
-      const p1 = newPath.points[1]
-      ctx.beginPath()
-      ctx.moveTo(p0.x * canvas.width, p0.y * canvas.height)
-      ctx.lineTo(p1.x * canvas.width, p1.y * canvas.height)
-      ctx.stroke()
-    }
-
-    // TEMPORARY: Disable scratch pattern detection due to false positives
-    // TODO: Fix scratch pattern detection logic for drawBatch-drawn paths
-    /*
-    if (isScratchPattern(newPath)) {
-      if (options.onScratchComplete) {
-        options.onScratchComplete(newPath)
+      // ポイントが2つだけで終了した場合（直線）
+      // drawBatchでは二重線防止のために描画をスキップしているので、ここで描画する
+      if (newPath.points.length === 2 && canvas && ctx) {
+        const p0 = newPath.points[0]
+        const p1 = newPath.points[1]
+        ctx.beginPath()
+        ctx.moveTo(p0.x * canvas.width, p0.y * canvas.height)
+        ctx.lineTo(p1.x * canvas.width, p1.y * canvas.height)
+        ctx.stroke()
       }
-    } else {
+
+      // TEMPORARY: Disable scratch pattern detection due to false positives
+      // TODO: Fix scratch pattern detection logic for drawBatch-drawn paths
+      /*
+      if (isScratchPattern(newPath)) {
+        if (options.onScratchComplete) {
+          options.onScratchComplete(newPath)
+        }
+      } else {
+        if (options.onPathComplete) {
+          options.onPathComplete(newPath)
+        }
+      }
+      */
+
+      // Always call onPathComplete (scratch pattern detection disabled)
       if (options.onPathComplete) {
         options.onPathComplete(newPath)
       }
     }
-    */
 
-    // Always call onPathComplete (scratch pattern detection disabled)
-    if (options.onPathComplete) {
-      options.onPathComplete(newPath)
-    }
+    currentPathRef.current = null
+    ctxRef.current = null
+    setIsDrawing(false)
   }
 
-  currentPathRef.current = null
-  ctxRef.current = null
-  setIsDrawing(false)
-}
+  /**
+   * 描画をキャンセル（パスを保存せずにリセット）
+   * なげなわ選択モード発動時などに使用
+   */
+  const cancelDrawing = () => {
+    currentPathRef.current = null
+    ctxRef.current = null
+    setIsDrawing(false)
+  }
 
-/**
- * 描画をキャンセル（パスを保存せずにリセット）
- * なげなわ選択モード発動時などに使用
- */
-const cancelDrawing = () => {
-  currentPathRef.current = null
-  ctxRef.current = null
-  setIsDrawing(false)
-}
-
-return {
-  isDrawing,
-  startDrawing,
-  draw, // 名前変更 continueDrawing -> draw
-  drawBatch, // Coalesced Events用
-  stopDrawing,
-  cancelDrawing
-}
+  return {
+    isDrawing,
+    startDrawing,
+    draw, // 名前変更 continueDrawing -> draw
+    drawBatch, // Coalesced Events用
+    stopDrawing,
+    cancelDrawing
+  }
 }
 
