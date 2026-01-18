@@ -454,91 +454,72 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         }
     }
 
-    if (selectionState?.isDragging) {
-        onSelectionDragEnd?.()
-        return
-    }
 
-    if (isDrawing) {
-        if (isInteractive) {
-            hookStopDrawing()
-            addDebugLog(`🏁 Stroke Finished`)
-        }
-    } else if (isErasing) {
-        if (isInteractive) {
-            hookStopErasing()
-            const ctx = liveCanvasRef.current?.getContext('2d')
-            if (ctx && liveCanvasRef.current) {
-                ctx.clearRect(0, 0, liveCanvasRef.current.width, liveCanvasRef.current.height)
-            }
-        }
-    }
-}
 
     return (
-    <div
-        className={className}
-        style={{
-            position: 'relative',
-            width: width,
-            height: height,
-            ...style
-        }}
-    >
-        {/* Visual Debug Overlay */}
-        <div style={{
-            position: 'absolute',
-            top: 0,
-            right: 0,
-            backgroundColor: 'rgba(0,0,0,0.7)',
-            color: 'lime',
-            fontSize: '10px',
-            padding: '4px',
-            zIndex: 9999,
-            pointerEvents: 'none',
-            maxWidth: '250px',
-            fontFamily: 'monospace'
-        }}>
-            <div>Paths: {debugPathCount}</div>
-            <div>Last Pen: {lastPenTimeRef.current ? (Date.now() - lastPenTimeRef.current) + 'ms ago' : 'None'}</div>
-            <hr style={{ borderColor: '#444' }} />
-            {debugLogs.map((log, i) => <div key={i}>{log}</div>)}
-        </div>
-
-        {/* Static Layer (Bottom) */}
-        <canvas
-            ref={staticCanvasRef}
-            width={width}
-            height={height}
+        <div
+            className={className}
             style={{
+                position: 'relative',
+                width: width,
+                height: height,
+                ...style
+            }}
+        >
+            {/* Visual Debug Overlay */}
+            <div style={{
                 position: 'absolute',
                 top: 0,
-                left: 0,
+                right: 0,
+                backgroundColor: 'rgba(0,0,0,0.7)',
+                color: 'lime',
+                fontSize: '10px',
+                padding: '4px',
+                zIndex: 9999,
                 pointerEvents: 'none',
-                zIndex: 0
-            }}
-        />
-        {/* Live Layer (Top) */}
-        <canvas
-            ref={liveCanvasRef}
-            width={width}
-            height={height}
-            style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                zIndex: 1,
-                cursor: isInteractive
-                    ? (isDrawing ? ICON_SVG.penCursor(color) : ICON_SVG.eraserCursor)
-                    : 'default',
-                touchAction: 'none'
-            }}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerUp}
-            onPointerLeave={handlePointerUp}
-        />
-    </div>
-)
+                maxWidth: '250px',
+                fontFamily: 'monospace'
+            }}>
+                <div>Paths: {debugPathCount}</div>
+                <div>Last Pen: {lastPenTimeRef.current ? (Date.now() - lastPenTimeRef.current) + 'ms ago' : 'None'}</div>
+                <hr style={{ borderColor: '#444' }} />
+                {debugLogs.map((log, i) => <div key={i}>{log}</div>)}
+            </div>
+
+            {/* Static Layer (Bottom) */}
+            <canvas
+                ref={staticCanvasRef}
+                width={width}
+                height={height}
+                style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    pointerEvents: 'none',
+                    zIndex: 0
+                }}
+            />
+            {/* Live Layer (Top) */}
+            <canvas
+                ref={liveCanvasRef}
+                width={width}
+                height={height}
+                style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    zIndex: 1,
+                    cursor: isInteractive
+                        ? (isDrawing ? ICON_SVG.penCursor(color) : ICON_SVG.eraserCursor)
+                        : 'default',
+                    touchAction: 'none'
+                }}
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerUp}
+                onPointerLeave={handlePointerUp}
+            />
+        </div>
+    )
 })
