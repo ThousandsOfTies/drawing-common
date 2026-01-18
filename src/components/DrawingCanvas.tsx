@@ -1,4 +1,4 @@
-﻿import React, { useRef, useEffect, useState } from 'react'
+﻿import React, { useRef, useEffect, useState, useMemo } from 'react'
 import { useDrawing, doPathsIntersect } from '../hooks/useDrawing'
 import { useEraser } from '../hooks/useEraser'
 import { DrawingPath, DrawingPoint, SelectionState } from '../types'
