@@ -312,53 +312,54 @@ export const useDrawing = (
         }
       }
     }
+  }
 
-    const stopDrawing = () => {
-      if (isDrawing && currentPathRef.current) {
-        const newPath = currentPathRef.current
+  const stopDrawing = () => {
+    if (isDrawing && currentPathRef.current) {
+      const newPath = currentPathRef.current
 
-        // TEMPORARY: Disable scratch pattern detection due to false positives
-        // TODO: Fix scratch pattern detection logic for drawBatch-drawn paths
-        /*
-        if (isScratchPattern(newPath)) {
-          if (options.onScratchComplete) {
-            options.onScratchComplete(newPath)
-          }
-        } else {
-          if (options.onPathComplete) {
-            options.onPathComplete(newPath)
-          }
+      // TEMPORARY: Disable scratch pattern detection due to false positives
+      // TODO: Fix scratch pattern detection logic for drawBatch-drawn paths
+      /*
+      if (isScratchPattern(newPath)) {
+        if (options.onScratchComplete) {
+          options.onScratchComplete(newPath)
         }
-        */
-
-        // Always call onPathComplete (scratch pattern detection disabled)
+      } else {
         if (options.onPathComplete) {
           options.onPathComplete(newPath)
         }
       }
+      */
 
-      currentPathRef.current = null
-      ctxRef.current = null
-      setIsDrawing(false)
+      // Always call onPathComplete (scratch pattern detection disabled)
+      if (options.onPathComplete) {
+        options.onPathComplete(newPath)
+      }
     }
 
-    /**
-     * 描画をキャンセル（パスを保存せずにリセット）
-     * なげなわ選択モード発動時などに使用
-     */
-    const cancelDrawing = () => {
-      currentPathRef.current = null
-      ctxRef.current = null
-      setIsDrawing(false)
-    }
-
-    return {
-      isDrawing,
-      startDrawing,
-      draw, // 名前変更 continueDrawing -> draw
-      drawBatch, // Coalesced Events用
-      stopDrawing,
-      cancelDrawing
-    }
+    currentPathRef.current = null
+    ctxRef.current = null
+    setIsDrawing(false)
   }
+
+  /**
+   * 描画をキャンセル（パスを保存せずにリセット）
+   * なげなわ選択モード発動時などに使用
+   */
+  const cancelDrawing = () => {
+    currentPathRef.current = null
+    ctxRef.current = null
+    setIsDrawing(false)
+  }
+
+  return {
+    isDrawing,
+    startDrawing,
+    draw, // 名前変更 continueDrawing -> draw
+    drawBatch, // Coalesced Events用
+    stopDrawing,
+    cancelDrawing
+  }
+}
 }
