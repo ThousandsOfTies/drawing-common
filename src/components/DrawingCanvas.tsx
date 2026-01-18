@@ -80,7 +80,6 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
 
     // 2本指タップ検出用
     const twoFingerTapStartRef = useRef<{ time: number, dist: number } | null>(null)
-    const lastPathTimeRef = useRef(0)
 
     // useDrawing hook (Live Layerに描画)
     const {
@@ -94,13 +93,6 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         width: size,
         color,
         onPathComplete: (path) => {
-            const now = Date.now()
-            if (now - lastPathTimeRef.current < 50) {
-                addDebugLog(`⚠️ Ignored Double Path (${now - lastPathTimeRef.current}ms)`)
-                return
-            }
-            lastPathTimeRef.current = now
-
             addDebugLog(`🎁 Path Added (pts=${path.points.length})`)
 
             // なげなわ選択
@@ -342,7 +334,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         // Strict Strict Pen Mode (stylusOnly時はペン以外完全遮断)
         if (stylusOnly && isDrawing && e.pointerType !== 'pen') {
             addDebugLog(`🚫 BLOCKED (Not Pen): ${e.pointerType}`)
-            // return // DISABLED for debugging
+            return
         }
 
         console.log('[DrawingCanvas] PointerDown', { type: e.pointerType, tool, isDrawing })
@@ -367,10 +359,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
                 const coords = toCanvasCoordinates(e)
                 if (coords) {
                     (e.target as Element).setPointerCapture(e.pointerId)
-                    addDebugLog(`🖊️ Start: ${Math.round(coords.x)},${Math.round(coords.y)}`)
                     hookStartDrawing(coords.x, coords.y)
-                } else {
-                    addDebugLog(`❌ Start Fail: No Coords`)
                 }
             }
         } else if (isErasing) {
@@ -388,12 +377,12 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
 
 
     const handlePointerMove = (e: React.PointerEvent) => {
-        // Strict Mode Check Removed (Debugging)
-        // if (stylusOnly && isDrawing && isInteractive && e.pointerType !== 'pen' && (e.buttons === 1 || e.pressure > 0)) {
-        //     // Only log if it would have been a drawing move
-        //     // addDebugLog(`🚫 Move Blocked: ${e.pointerType}`)
-        //     // return
-        // }
+        // Strict Mode Check
+        if (stylusOnly && isDrawing && isInteractive && e.pointerType !== 'pen' && (e.buttons === 1 || e.pressure > 0)) {
+            // Only log if it would have been a drawing move
+            // addDebugLog(`🚫 Move Blocked: ${e.pointerType}`)
+            return
+        }
 
         if (isDrawing) {
             if (isInteractive && (e.buttons === 1 || e.pointerType === 'touch' || e.pointerType === 'pen')) {
@@ -403,16 +392,15 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
                 const events = (e.getCoalescedEvents ? e.getCoalescedEvents() : [e]) as React.PointerEvent[]
 
                 if (coords) {
+                    // Log only 1 in 10 moves to avoid spam, or log "Move" once per stroke?
+                    // No, spam is fine for now if big enough
+                    // addDebugLog(`Move: ${events.length} evts`)
                     events.forEach((ev: React.PointerEvent) => {
                         const c = toCanvasCoordinates(ev)
-                        if (c) {
+                        if (c) { // Removed isCurrentlyDrawing check to fix race condition
                             hookContinueDrawing(c.x, c.y)
-                        } else {
-                            // addDebugLog('❌ Move: Invalid Coords')
                         }
                     })
-                } else {
-                    addDebugLog('❌ Move: No Coords')
                 }
 
                 if (hasSelection) {
@@ -482,23 +470,22 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         <div style={{ position: 'relative', width, height, touchAction: 'none' }} className={className}>
             {/* Visual Debug Overlay */}
             <div style={{
-                position: 'fixed', // Fixed to viewport
-                top: 100,
-                left: 20,
-                background: 'rgba(0, 0, 0, 0.85)',
+                position: 'absolute',
+                top: 50,
+                left: 10,
+                background: 'rgba(0, 0, 0, 0.7)',
                 color: '#0f0',
-                padding: '12px',
+                padding: '8px',
                 borderRadius: '8px',
                 pointerEvents: 'none',
-                zIndex: 99999,
-                fontSize: '16px',
+                zIndex: 9999,
+                fontSize: '14px',
                 fontWeight: 'bold',
                 fontFamily: 'monospace',
                 whiteSpace: 'pre-wrap',
-                maxWidth: '400px',
-                maxHeight: '400px',
-                overflowY: 'auto', // Scrollable
-                boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
+                maxWidth: '600px',
+                maxHeight: '600px',
+                overflow: 'hidden'
             }}>
                 <div style={{ fontSize: '16px', borderBottom: '1px solid #444', marginBottom: '4px' }}>ID: {instanceId}</div>
                 <div style={{ fontSize: '14px', marginBottom: '4px' }}>Paths: {paths.length}</div>
@@ -517,7 +504,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
                 ref={liveCanvasRef}
                 width={width}
                 height={height}
-                style={{ position: 'absolute', top: 0, left: 0, zIndex: 2, touchAction: 'none', pointerEvents: 'all' }}
+                style={{ position: 'absolute', top: 0, left: 0, zIndex: 2, touchAction: 'none' }}
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
