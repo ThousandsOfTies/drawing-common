@@ -342,7 +342,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         // Strict Strict Pen Mode (stylusOnly時はペン以外完全遮断)
         if (stylusOnly && isDrawing && e.pointerType !== 'pen') {
             addDebugLog(`🚫 BLOCKED (Not Pen): ${e.pointerType}`)
-            return
+            // return // DISABLED for debugging
         }
 
         console.log('[DrawingCanvas] PointerDown', { type: e.pointerType, tool, isDrawing })
@@ -392,7 +392,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         if (stylusOnly && isDrawing && isInteractive && e.pointerType !== 'pen' && (e.buttons === 1 || e.pressure > 0)) {
             // Only log if it would have been a drawing move
             // addDebugLog(`🚫 Move Blocked: ${e.pointerType}`)
-            return
+            // return // DISABLED for debugging
         }
 
         if (isDrawing) {
