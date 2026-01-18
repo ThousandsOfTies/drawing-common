@@ -147,10 +147,35 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
             ctx.lineWidth = path.width
 
             if (path.points.length > 0) {
-                ctx.moveTo(path.points[0].x * canvas.width, path.points[0].y * canvas.height)
-                path.points.forEach((point, idx) => {
-                    if (idx > 0) ctx.lineTo(point.x * canvas.width, point.y * canvas.height)
-                })
+                const w = canvas.width
+                const h = canvas.height
+
+                ctx.moveTo(path.points[0].x * w, path.points[0].y * h)
+
+                if (path.points.length < 3) {
+                    // 3点未満は直線で描画
+                    for (let i = 1; i < path.points.length; i++) {
+                        ctx.lineTo(path.points[i].x * w, path.points[i].y * h)
+                    }
+                } else {
+                    // 3点以上は二次ベジェ曲線（Midpoint Spline）で滑らかに補間
+                    // drawBatchと同じロジックを使用して見た目を統一する
+                    let i = 1
+                    for (; i < path.points.length - 1; i++) {
+                        const p1 = path.points[i]
+                        const p2 = path.points[i + 1]
+
+                        const cpX = p1.x * w
+                        const cpY = p1.y * h
+                        const endX = (p1.x + p2.x) / 2 * w
+                        const endY = (p1.y + p2.y) / 2 * h
+
+                        ctx.quadraticCurveTo(cpX, cpY, endX, endY)
+                    }
+                    // 最後の区間は直線で閉じる（Midpointで終わっているため）
+                    const last = path.points[path.points.length - 1]
+                    ctx.lineTo(last.x * w, last.y * h)
+                }
                 ctx.stroke()
             }
         })
