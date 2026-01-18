@@ -124,7 +124,7 @@ export const useDrawing = (
 
   const draw = (x: number, y: number) => {
     const canvas = canvasRef.current
-    if (!isDrawingRef.current || !currentPathRef.current || !ctxRef.current || !canvas) return
+    if (!isDrawing || !currentPathRef.current || !ctxRef.current || !canvas) return
 
     // 正規化
     const normalizedX = x / canvas.width
@@ -211,7 +211,7 @@ export const useDrawing = (
   const drawBatch = (points: Array<{ x: number, y: number }>) => {
     const canvas = canvasRef.current
 
-    if (!isDrawingRef.current || !currentPathRef.current || !ctxRef.current || !canvas || points.length === 0) {
+    if (!isDrawing || !currentPathRef.current || !ctxRef.current || !canvas || points.length === 0) {
       return
     }
 

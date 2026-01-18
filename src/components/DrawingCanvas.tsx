@@ -388,12 +388,12 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
 
 
     const handlePointerMove = (e: React.PointerEvent) => {
-        // Strict Mode Check
-        if (stylusOnly && isDrawing && isInteractive && e.pointerType !== 'pen' && (e.buttons === 1 || e.pressure > 0)) {
-            // Only log if it would have been a drawing move
-            // addDebugLog(`🚫 Move Blocked: ${e.pointerType}`)
-            // return // DISABLED for debugging
-        }
+        // Strict Mode Check Removed (Debugging)
+        // if (stylusOnly && isDrawing && isInteractive && e.pointerType !== 'pen' && (e.buttons === 1 || e.pressure > 0)) {
+        //     // Only log if it would have been a drawing move
+        //     // addDebugLog(`🚫 Move Blocked: ${e.pointerType}`)
+        //     // return
+        // }
 
         if (isDrawing) {
             if (isInteractive && (e.buttons === 1 || e.pointerType === 'touch' || e.pointerType === 'pen')) {
