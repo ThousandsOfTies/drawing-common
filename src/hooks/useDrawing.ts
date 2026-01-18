@@ -222,7 +222,9 @@ export const useDrawing = (
     // Coalesced Eventsからの入力は高精細なので補間は不要
     // 単純にポイントを追加し、描画ロジックを回す
     const allNewPoints = normalizedPoints
-    const minDistance = 0.5 / Math.min(canvas.width, canvas.height)
+    // ポイントをまとめて追加（重複除外）
+    // ムラ防止のため、フィルタを少し強める (0.5px -> 1.5px)
+    const minDistance = 1.5 / Math.min(canvas.width, canvas.height)
     const oldLength = path.points.length
 
     for (const point of allNewPoints) {
@@ -242,40 +244,24 @@ export const useDrawing = (
     if (newLength === oldLength) return
 
     // 描画ループ
-    // 既存のポイント(oldLength)から新しいポイントまでを描画
-    // つなぎ目を滑らかにするため、少し前からループを回す必要があるか？
-    // -> 配列のインデックスベースで p0, p1, p2 を取得するので、
-    //    i は「今回追加されたポイントによって新しく形成されるセグメントの末尾」を指すべき
-    //    path.points[oldLength] は「新しく追加された最初の点」
-
-    // 直線(len=2)を描くのは i=1
-    // 曲線(len>=3)を描くのは i=2 から
-
-    // startIdx: ループの開始位置
-    // oldLength=1 (Startのみ) -> 追加されて len=2,3... -> i=1から開始
-    // oldLength=10 (描画中) -> 追加されて len=11 12... -> i=10から開始でいいか？
-    // i=10のとき: p0=8, p1=9, p2=10. p2は新ポイント。Correct.
-
     const startIdx = Math.max(1, oldLength)
 
     for (let i = startIdx; i < newLength; i++) {
       const points = path.points
 
       if (i === 1) {
-        // i=1: points[0]とpoints[1]を結ぶ直線
-        // ポイントが3つ以上あるなら、i=2のループでp0(start)からの曲線を描くため
-        // ここでの直線描画はスキップする（二重線防止）
+        // i=1: 最初の直線 (p0-p1)
+        // すでに3点以上あるなら、i=2でp0からの曲線を描くのでここはスキップ
         if (newLength > 2) {
           continue
         }
 
-        // ポイントが2点しかない場合は直線を引くしかない
         ctx.beginPath()
         ctx.moveTo(points[0].x * canvas.width, points[0].y * canvas.height)
         ctx.lineTo(points[1].x * canvas.width, points[1].y * canvas.height)
         ctx.stroke()
       } else {
-        // i >= 2: points[i-2], [i-1], [i] を使って曲線を描く
+        // i >= 2: 曲線 (p0-p1-p2)
         const p0 = points[i - 2]
         const p1 = points[i - 1]
         const p2 = points[i]
@@ -287,10 +273,16 @@ export const useDrawing = (
 
         ctx.beginPath()
         if (i === 2) {
-          // 最初の曲線セグメント。p0から開始
-          ctx.moveTo(p0.x * canvas.width, p0.y * canvas.height)
+          // 最初の曲線セグメント
+          // もし「以前に直線(p0-p1)を描画済み」(=oldLengthが2だった)の場合、
+          // p0から描くと二重線になってしまうため、p1から描き始める
+          if (oldLength === 2) {
+            ctx.moveTo(p1.x * canvas.width, p1.y * canvas.height)
+          } else {
+            ctx.moveTo(p0.x * canvas.width, p0.y * canvas.height)
+          }
         } else {
-          // 中間のセグメント。前回の終点（p0とp1の中点）から開始
+          // 中間のセグメント
           const prevEndX = (p0.x + p1.x) / 2 * canvas.width
           const prevEndY = (p0.y + p1.y) / 2 * canvas.height
           ctx.moveTo(prevEndX, prevEndY)
