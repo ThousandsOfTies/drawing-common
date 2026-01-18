@@ -397,7 +397,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
                     // addDebugLog(`Move: ${events.length} evts`)
                     events.forEach((ev: React.PointerEvent) => {
                         const c = toCanvasCoordinates(ev)
-                        if (c && isCurrentlyDrawing) { // Only if we already started
+                        if (c) { // Removed isCurrentlyDrawing check to fix race condition
                             hookContinueDrawing(c.x, c.y)
                         }
                     })
@@ -468,26 +468,27 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
 
     return (
         <div style={{ position: 'relative', width, height, touchAction: 'none' }} className={className}>
-            {/* Visual Debug Overlay - INCREASED SIZE */}
+            {/* Visual Debug Overlay */}
             <div style={{
                 position: 'absolute',
-                top: 10,
-                right: 10,
+                top: 50,
+                left: 10,
                 background: 'rgba(0, 0, 0, 0.7)',
                 color: '#0f0',
-                padding: '16px',
+                padding: '8px',
                 borderRadius: '8px',
                 pointerEvents: 'none',
                 zIndex: 9999,
-                fontSize: '24px', // Increased from 10px
+                fontSize: '14px',
+                fontWeight: 'bold',
                 fontFamily: 'monospace',
                 whiteSpace: 'pre-wrap',
-                maxWidth: '600px', // Increased width
-                maxHeight: '80vh', // Increased height
+                maxWidth: '600px',
+                maxHeight: '600px',
                 overflow: 'hidden'
             }}>
-                <div style={{ fontWeight: 'bold', fontSize: '28px', borderBottom: '1px solid #444', marginBottom: '8px' }}>ID: {instanceId}</div>
-                <div style={{ fontSize: '24px', marginBottom: '8px' }}>Paths: {paths.length}</div>
+                <div style={{ fontSize: '16px', borderBottom: '1px solid #444', marginBottom: '4px' }}>ID: {instanceId}</div>
+                <div style={{ fontSize: '14px', marginBottom: '4px' }}>Paths: {paths.length}</div>
                 {debugLogs.map((log, i) => (
                     <div key={i}>{log}</div>
                 ))}
