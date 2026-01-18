@@ -314,6 +314,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     const addDebugLog = (msg: string) => {
         setDebugLogs(prev => [`${new Date().toLocaleTimeString().split(' ')[0]}.${new Date().getMilliseconds()} ${msg}`, ...prev].slice(0, 8))
     }
+    const instanceId = useMemo(() => Math.random().toString(36).slice(2, 6).toUpperCase(), [])
     // --- VISUAL DEBUGGING END ---
 
     // 統合ハンドラ: Pointer Events
@@ -362,6 +363,21 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
             }
         }
     }
+
+    const {
+        startDrawing: hookStartDrawing,
+        drawBatch,
+        continueDrawing: hookContinueDrawing,
+        stopDrawing: hookStopDrawing,
+        cancelDrawing: hookCancelDrawing
+    } = useDrawing(liveCanvasRef, {
+        onPathComplete: (path) => {
+            addDebugLog(`🎁 Path Added (pts=${path.points.length})`)
+            onPathAdd?.(path)
+        },
+        minDistance: 2,
+        curveTightness: 0
+    })
 
     const handlePointerMove = (e: React.PointerEvent) => {
         // addDebugLog(`↔️ Move: ${e.pointerType}`) // Too noisy for move? Maybe just keep it for now.
@@ -480,6 +496,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
                 maxWidth: '250px',
                 fontFamily: 'monospace'
             }}>
+                <div>ID: {instanceId}</div>
                 <div>Paths: {paths.length}</div>
                 {/* <div>Last Pen: (Removed in Strict Mode)</div> */}
                 <hr style={{ borderColor: '#444' }} />
