@@ -244,64 +244,76 @@ export const useDrawing = (
         }
       }
       */
-    }
+      const allNewPoints = [...interpolatedPoints, ...normalizedPoints]
 
-    // 補間ポイント + 新しいポイントを追加
-    const allNewPoints = [...interpolatedPoints, ...normalizedPoints]
+      // ポイントをまとめて追加（重複除外）
+      const minDistance = 0.5 / Math.min(canvas.width, canvas.height)
+      const oldLength = path.points.length
 
-    // ポイントを追加しながら描画
-    // ノイズフィルタ：直前のポイントと近すぎる場合はスキップ
-    const minDistance = 0.5 / Math.min(canvas.width, canvas.height) // 0.5px相当
-
-    for (const point of allNewPoints) {
-      // 重複チェック
-      const currentLast = path.points[path.points.length - 1]
-      if (currentLast) {
-        const dx = point.x - currentLast.x
-        const dy = point.y - currentLast.y
-        if (Math.sqrt(dx * dx + dy * dy) < minDistance) {
-          continue
+      for (const point of allNewPoints) {
+        const currentLast = path.points[path.points.length - 1]
+        if (currentLast) {
+          const dx = point.x - currentLast.x
+          const dy = point.y - currentLast.y
+          if (Math.sqrt(dx * dx + dy * dy) < minDistance) {
+            continue
+          }
         }
+        path.points.push(point)
       }
 
-      path.points.push(point)
-      const points = path.points
-      const len = points.length
+      const newLength = path.points.length
+      if (newLength === oldLength) return // 追加なし
 
-      if (len < 2) continue
+      // 描画ループ
+      // 既存のポイント(oldLength)から新しいポイントまでを描画
+      // ただし、接続のため startIdx は調整
+      const startIdx = Math.max(1, oldLength)
 
-      if (len < 3) {
-        ctx.beginPath()
-        ctx.moveTo(points[0].x * canvas.width, points[0].y * canvas.height)
-        ctx.lineTo(points[1].x * canvas.width, points[1].y * canvas.height)
-        ctx.stroke()
-      } else {
-        const p0 = points[len - 3]
-        const p1 = points[len - 2]
-        const p2 = points[len - 1]
+      for (let i = startIdx; i < newLength; i++) {
+        const points = path.points
 
-        const cpX = p1.x * canvas.width
-        const cpY = p1.y * canvas.height
-        const endX = (p1.x + p2.x) / 2 * canvas.width
-        const endY = (p1.y + p2.y) / 2 * canvas.height
+        if (i === 1) {
+          // 最初のセグメント
+          // もし合計ポイントが3点以上あるなら、i=2のループでp0からの曲線を描くため
+          // ここでの直線描画はスキップする（二重線防止）
+          if (newLength > 2) {
+            continue
+          }
 
-        ctx.beginPath()
-        if (len === 3) {
-          ctx.moveTo(p0.x * canvas.width, p0.y * canvas.height)
+          // ポイントが2点しかない場合は直線を引くしかない
+          ctx.beginPath()
+          ctx.moveTo(points[0].x * canvas.width, points[0].y * canvas.height)
+          ctx.lineTo(points[1].x * canvas.width, points[1].y * canvas.height)
+          ctx.stroke()
         } else {
-          const prevEndX = (p0.x + p1.x) / 2 * canvas.width
-          const prevEndY = (p0.y + p1.y) / 2 * canvas.height
-          ctx.moveTo(prevEndX, prevEndY)
+          // 3点目以降 (i >= 2)
+          const p0 = points[i - 2]
+          const p1 = points[i - 1]
+          const p2 = points[i]
+
+          const cpX = p1.x * canvas.width
+          const cpY = p1.y * canvas.height
+          const endX = (p1.x + p2.x) / 2 * canvas.width
+          const endY = (p1.y + p2.y) / 2 * canvas.height
+
+          ctx.beginPath()
+          if (i === 2) { // len=3の時
+            // p0からスタート
+            ctx.moveTo(p0.x * canvas.width, p0.y * canvas.height)
+          } else {
+            // 前回の終点（中点）からスタート
+            const prevEndX = (p0.x + p1.x) / 2 * canvas.width
+            const prevEndY = (p0.y + p1.y) / 2 * canvas.height
+            ctx.moveTo(prevEndX, prevEndY)
+          }
+          ctx.quadraticCurveTo(cpX, cpY, endX, endY)
+          ctx.stroke()
         }
-        ctx.quadraticCurveTo(cpX, cpY, endX, endY)
-        ctx.stroke()
       }
     }
-  }
 
-  const stopDrawing = () => {
-    if (isDrawing && currentPathRef.current) {
-      const newPath = currentPathRef.current
+    const stopDrawing = () => {
 
       // TEMPORARY: Disable scratch pattern detection due to false positives
       // TODO: Fix scratch pattern detection logic for drawBatch-drawn paths
