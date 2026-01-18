@@ -36,6 +36,9 @@ export interface DrawingCanvasProps {
     onSelectionDragEnd?: () => void
     onSelectionClear?: () => void
 
+    // インタラクションモード
+    interactionMode?: 'full' | 'display-only' // 'display-only'時は内部useDrawingを無効化
+
     // イベント
     onPathAdd: (path: DrawingPath) => void
     onPathsChange?: (paths: DrawingPath[]) => void // 消しゴムで消された時など
@@ -56,6 +59,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     stylusOnly = false,
     isDrawingExternal = false,
     selectionState = null,
+    interactionMode = 'full',
     onLassoComplete,
     onSelectionDragStart,
     onSelectionDrag,
@@ -80,13 +84,8 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     const lastPathTimeRef = useRef(0)
     const isTouchActiveRef = useRef(false)
 
-    // useDrawing hook
-    const {
-        isDrawing: isCurrentlyDrawing,
-        startDrawing: hookStartDrawing,
-        draw: hookContinueDrawing,
-        stopDrawing: hookStopDrawing
-    } = useDrawing(canvasRef, {
+    // useDrawing hook (display-onlyモードでは無効化)
+    const drawingHookResult = interactionMode === 'full' ? useDrawing(canvasRef, {
         width: size,
         color,
         onPathComplete: (path) => {
@@ -116,7 +115,19 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
                 onPathsChange(pathsToKeep)
             }
         }
-    })
+    }) : {
+        isDrawing: false,
+        startDrawing: () => { },
+        draw: () => { },
+        stopDrawing: () => { }
+    }
+
+    const {
+        isDrawing: isCurrentlyDrawing,
+        startDrawing: hookStartDrawing,
+        draw: hookContinueDrawing,
+        stopDrawing: hookStopDrawing
+    } = drawingHookResult
 
     // useEraser hook
     const {
