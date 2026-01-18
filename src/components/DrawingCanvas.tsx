@@ -359,7 +359,10 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
                 const coords = toCanvasCoordinates(e)
                 if (coords) {
                     (e.target as Element).setPointerCapture(e.pointerId)
+                    addDebugLog(`🖊️ Start: ${Math.round(coords.x)},${Math.round(coords.y)}`)
                     hookStartDrawing(coords.x, coords.y)
+                } else {
+                    addDebugLog(`❌ Start Fail: No Coords`)
                 }
             }
         } else if (isErasing) {
@@ -506,7 +509,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
                 ref={liveCanvasRef}
                 width={width}
                 height={height}
-                style={{ position: 'absolute', top: 0, left: 0, zIndex: 2, touchAction: 'none' }}
+                style={{ position: 'absolute', top: 0, left: 0, zIndex: 2, touchAction: 'none', pointerEvents: 'all' }}
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
