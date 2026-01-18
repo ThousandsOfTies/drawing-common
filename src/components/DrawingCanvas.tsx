@@ -65,10 +65,13 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     onPathsChange,
     onUndo
 }, ref) => {
-    const canvasRef = useRef<HTMLCanvasElement>(null)
+    // Static Canvas: 保存された線を表示（React State駆動）
+    const staticCanvasRef = useRef<HTMLCanvasElement>(null)
+    // Live Canvas: 現在描いている線のみを表示（Interaction駆動）
+    const liveCanvasRef = useRef<HTMLCanvasElement>(null)
 
-    // 親コンポーネントに内部のcanvas要素を公開
-    React.useImperativeHandle(ref, () => canvasRef.current!)
+    // 親コンポーネントには静的キャンバス（保存済みデータ）を公開
+    React.useImperativeHandle(ref, () => staticCanvasRef.current!)
 
     const isDrawing = tool === 'pen'
     const isErasing = tool === 'eraser'
@@ -78,24 +81,33 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     // 2本指タップ検出用
     const twoFingerTapStartRef = useRef<{ time: number, dist: number } | null>(null)
 
-    // useDrawing hook
+    // useDrawing hook (Live Layerに描画)
     const {
         isDrawing: isCurrentlyDrawing,
         startDrawing: hookStartDrawing,
         draw: hookContinueDrawing,
-        drawBatch, // Destructure drawBatch
+        drawBatch,
         stopDrawing: hookStopDrawing
-    } = useDrawing(canvasRef, {
+    } = useDrawing(liveCanvasRef, {
         width: size,
         color,
         onPathComplete: (path) => {
-            // なげなわ選択が有効で、ループとして認識された場合はパスを追加しない
+            // なげなわ選択
             if (onLassoComplete && onLassoComplete(path)) {
+                // Live Canvasをクリア
+                const ctx = liveCanvasRef.current?.getContext('2d')
+                if (ctx && liveCanvasRef.current) ctx.clearRect(0, 0, liveCanvasRef.current.width, liveCanvasRef.current.height)
                 return
             }
             onPathAdd(path)
+
+            // 描画完了後、Live Canvas（上層）をクリアして、Static Canvas（下層）への反映と交代する
+            const ctx = liveCanvasRef.current?.getContext('2d')
+            if (ctx && liveCanvasRef.current) {
+                ctx.clearRect(0, 0, liveCanvasRef.current.width, liveCanvasRef.current.height)
+            }
         },
-        // スクラッチ完了時：交差するパスを削除
+        // スクラッチ完了時
         onScratchComplete: (scratchPath) => {
             if (!onPathsChange) return
 
@@ -107,6 +119,12 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
             // 交差があった場合のみ更新
             if (pathsToKeep.length < paths.length) {
                 onPathsChange(pathsToKeep)
+            }
+
+            // Live Canvasクリア
+            const ctx = liveCanvasRef.current?.getContext('2d')
+            if (ctx && liveCanvasRef.current) {
+                ctx.clearRect(0, 0, liveCanvasRef.current.width, liveCanvasRef.current.height)
             }
         }
     })
@@ -120,9 +138,9 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         onPathsChange?.(newPaths)
     })
 
-    // 再描画ロジック（pathsが変わった時）
+    // 再描画ロジック（Static Layer / pathsが変わった時）
     useEffect(() => {
-        const canvas = canvasRef.current
+        const canvas = staticCanvasRef.current
         if (!canvas) return
 
         const ctx = canvas.getContext('2d')
@@ -133,15 +151,13 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         ctx.lineCap = 'round'
         ctx.lineJoin = 'round'
 
-        // ラッソストロークのインデックス（別途破線で描画するためスキップ）
+        // ラッソストロークのインデックス
         const lassoIdx = selectionState?.lassoStrokeIndex ?? -1
 
         paths.forEach((path, index) => {
-            // ラッソストロークはここではスキップ（後で破線として描画）
             if (index === lassoIdx) return
 
             ctx.beginPath()
-            // 選択されたパスは青でハイライト
             const isSelected = selectionState?.selectedIndices.includes(index)
             ctx.strokeStyle = isSelected ? '#3498db' : path.color
             ctx.lineWidth = path.width
@@ -153,26 +169,21 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
                 ctx.moveTo(path.points[0].x * w, path.points[0].y * h)
 
                 if (path.points.length < 3) {
-                    // 3点未満は直線で描画
                     for (let i = 1; i < path.points.length; i++) {
                         ctx.lineTo(path.points[i].x * w, path.points[i].y * h)
                     }
                 } else {
-                    // 3点以上は二次ベジェ曲線（Midpoint Spline）で滑らかに補間
-                    // drawBatchと同じロジックを使用して見た目を統一する
+                    // Midpoint Spline (Liveとロジックを統一)
                     let i = 1
                     for (; i < path.points.length - 1; i++) {
                         const p1 = path.points[i]
                         const p2 = path.points[i + 1]
-
                         const cpX = p1.x * w
                         const cpY = p1.y * h
                         const endX = (p1.x + p2.x) / 2 * w
                         const endY = (p1.y + p2.y) / 2 * h
-
                         ctx.quadraticCurveTo(cpX, cpY, endX, endY)
                     }
-                    // 最後の区間は直線で閉じる（Midpointで終わっているため）
                     const last = path.points[path.points.length - 1]
                     ctx.lineTo(last.x * w, last.y * h)
                 }
@@ -180,7 +191,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
             }
         })
 
-        // ラッソストロークを破線で描画（選択モード中のみ）
+        // ラッソストローク (Static Layer)
         if (lassoIdx >= 0 && lassoIdx < paths.length) {
             const lasso = paths[lassoIdx]
             ctx.strokeStyle = 'rgba(52, 152, 219, 0.7)'
@@ -197,22 +208,17 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
             }
             ctx.setLineDash([])
         }
-
-        // バウンディングボックスは表示しない（ユーザー要望）
     }, [paths, width, height, selectionState])
 
     // Canvas座標変換ヘルパー
     const toCanvasCoordinates = (e: React.MouseEvent | React.TouchEvent | React.PointerEvent | PointerEvent): { x: number, y: number } | null => {
-        const canvas = canvasRef.current
+        const canvas = liveCanvasRef.current
         if (!canvas) return null
 
         const rect = canvas.getBoundingClientRect()
-        // タッチイベントの場合は最初のタッチポイントを使用
         const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX
         const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY
 
-        // 視覚的なサイズと内部バッファサイズの比率を計算
-        // (高解像度ディスプレイやRENDER_SCALEによる拡大縮小を補正)
         const scaleX = canvas.width / rect.width
         const scaleY = canvas.height / rect.height
 
@@ -222,13 +228,11 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         }
     }
 
-    // タッチがスタイラスかどうか判定（指のみを弾くため）
     const isStylusTouch = (touch: React.Touch): boolean => {
-        // @ts-ignore: touchTypeは標準プロパティだがTypeScript定義に含まれない場合がある
-        return touch.touchType === 'stylus'
+        return (touch as any).touchType === 'stylus'
     }
 
-    // ペン用ハンドラ
+    // イベントハンドラ (Live Canvas操作)
     const handlePenDown = (e: React.MouseEvent | React.TouchEvent) => {
         if (!isDrawing || !isInteractive) return
         const coords = toCanvasCoordinates(e)
@@ -246,12 +250,11 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         hookStopDrawing()
     }
 
-    // 消しゴム用ハンドラ
     const handleEraserDown = (e: React.MouseEvent | React.TouchEvent) => {
         if (!isErasing || !isInteractive) return
         const coords = toCanvasCoordinates(e)
         if (coords) {
-            const canvas = canvasRef.current
+            const canvas = liveCanvasRef.current
             if (canvas) {
                 hookStartErasing()
                 hookEraseAtPosition(canvas, coords.x, coords.y, paths)
@@ -263,8 +266,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         if (!isErasing || !isInteractive) return
         const coords = toCanvasCoordinates(e)
         if (coords) {
-            const canvas = canvasRef.current
-            // マウスボタンが押されているかチェック（タッチの場合は常に押されているとみなす）
+            const canvas = liveCanvasRef.current
             const isPressed = 'touches' in e || (e as React.MouseEvent).buttons === 1
             if (isPressed && canvas) {
                 hookEraseAtPosition(canvas, coords.x, coords.y, paths)
@@ -275,13 +277,18 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     const handleEraserUp = () => {
         if (!isErasing || !isInteractive) return
         hookStopErasing()
+        // 消しゴム終了時もLive Canvasをクリア
+        const ctx = liveCanvasRef.current?.getContext('2d')
+        if (ctx && liveCanvasRef.current) {
+            ctx.clearRect(0, 0, liveCanvasRef.current.width, liveCanvasRef.current.height)
+        }
     }
 
-    // 正規化座標へ変換（0-1）
+    // 正規化座標へ変換
     const toNormalizedCoordinates = (e: React.MouseEvent | React.TouchEvent | React.PointerEvent): DrawingPoint | null => {
         const coords = toCanvasCoordinates(e)
         if (!coords) return null
-        const canvas = canvasRef.current
+        const canvas = liveCanvasRef.current // Live Canvas基準
         if (!canvas) return null
         return {
             x: coords.x / canvas.width,
@@ -289,28 +296,20 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         }
     }
 
-    // 統合ハンドラ: Pointer Events (Coalesced Events対応)
+    // 統合ハンドラ: Pointer Events
     const handlePointerDown = (e: React.PointerEvent) => {
-        // パームリジェクション: stylusOnly時はタッチ（指）のみ無視し、ペンとマウスは許可
-        if (stylusOnly && isDrawing && e.pointerType === 'touch') {
-            return
-        }
+        if (stylusOnly && isDrawing && e.pointerType === 'touch') return
 
-        // 選択中の場合
         if (hasSelection && isDrawing) {
             const point = toNormalizedCoordinates(e)
             if (!point) return
 
-            // バウンディングボックス内なら移動開始
             const bb = selectionState?.boundingBox
             if (bb && point.x >= bb.minX && point.x <= bb.maxX && point.y >= bb.minY && point.y <= bb.maxY) {
-                // ポインターキャプチャ設定
                 (e.target as Element).setPointerCapture(e.pointerId)
                 onSelectionDragStart?.(point)
                 return
             }
-
-            // バウンディングボックス外なら選択解除
             onSelectionClear?.()
             return
         }
@@ -326,75 +325,59 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         } else if (isErasing) {
             if (isInteractive) {
                 const coords = toCanvasCoordinates(e)
-                if (coords) {
+                if (coords && liveCanvasRef.current) {
                     (e.target as Element).setPointerCapture(e.pointerId)
-                    const canvas = canvasRef.current
-                    if (canvas) {
-                        hookStartErasing()
-                        hookEraseAtPosition(canvas, coords.x, coords.y, paths)
-                    }
+                    hookStartErasing()
+                    hookEraseAtPosition(liveCanvasRef.current, coords.x, coords.y, paths)
                 }
             }
         }
     }
 
     const handlePointerMove = (e: React.PointerEvent) => {
-        // パームリジェクション
-        if (stylusOnly && isDrawing && e.pointerType !== 'pen') {
-            return
-        }
+        if (stylusOnly && isDrawing && e.pointerType !== 'pen') return
 
-        // 選択をドラッグ中
         if (selectionState?.isDragging) {
             const point = toNormalizedCoordinates(e)
             if (point) onSelectionDrag?.(point)
             return
         }
 
-        if (isDrawing) {
-            if (isInteractive) {
-                // Coalesced Events（高精細イベント）の取得と処理
-                // TypeScript fix: getCoalescedEvents is standard but React types might miss it or it's native
+        if (isDrawing && isInteractive) {
+            const nativeEvent = e.nativeEvent as PointerEvent
+            // @ts-ignore
+            if (nativeEvent.getCoalescedEvents) {
+                // @ts-ignore
+                const coalescedContexts = nativeEvent.getCoalescedEvents()
+                const points = coalescedContexts
+                    .map((evt: PointerEvent) => toCanvasCoordinates(evt))
+                    .filter((p: { x: number; y: number } | null): p is { x: number, y: number } => p !== null)
+
+                if (points.length > 0) {
+                    drawBatch(points)
+                }
+            } else {
+                const coords = toCanvasCoordinates(e)
+                if (coords) hookContinueDrawing(coords.x, coords.y)
+            }
+        } else if (isErasing && isInteractive) {
+            const coords = toCanvasCoordinates(e)
+            const canvas = liveCanvasRef.current
+            if (e.buttons === 1 && coords && canvas) {
                 const nativeEvent = e.nativeEvent as PointerEvent
-                // @ts-ignore: getCoalescedEvents might be missing in some TSC configs or React types
+                // @ts-ignore
                 if (nativeEvent.getCoalescedEvents) {
                     // @ts-ignore
-                    const coalescedContexts = nativeEvent.getCoalescedEvents()
-                    const points = coalescedContexts
-                        .map((evt: PointerEvent) => toCanvasCoordinates(evt))
-                        .filter((p: { x: number; y: number } | null): p is { x: number, y: number } => p !== null)
-
-                    if (points.length > 0) {
-                        drawBatch(points)
-                    }
-                } else {
-                    // フォールバック
-                    const coords = toCanvasCoordinates(e)
-                    if (coords) hookContinueDrawing(coords.x, coords.y)
-                }
-            }
-        } else if (isErasing) {
-            if (isInteractive) {
-                const coords = toCanvasCoordinates(e)
-                const canvas = canvasRef.current
-                // ボタン押下チェック (PointerEvent.buttons: 1 = Left Mouse / Pen Tip)
-                if (e.buttons === 1 && coords && canvas) {
-                    // Coalesced Events for Eraser (Smoother erasing)
-                    const nativeEvent = e.nativeEvent as PointerEvent
+                    const coalescedEvents = nativeEvent.getCoalescedEvents()
                     // @ts-ignore
-                    if (nativeEvent.getCoalescedEvents) {
-                        // @ts-ignore
-                        const coalescedEvents = nativeEvent.getCoalescedEvents()
-                        // @ts-ignore
-                        coalescedEvents.forEach((evt: PointerEvent) => {
-                            const evtCoords = toCanvasCoordinates(evt)
-                            if (evtCoords) {
-                                hookEraseAtPosition(canvas, evtCoords.x, evtCoords.y, paths)
-                            }
-                        })
-                    } else {
-                        hookEraseAtPosition(canvas, coords.x, coords.y, paths)
-                    }
+                    coalescedEvents.forEach((evt: PointerEvent) => {
+                        const evtCoords = toCanvasCoordinates(evt)
+                        if (evtCoords) {
+                            hookEraseAtPosition(canvas, evtCoords.x, evtCoords.y, paths)
+                        }
+                    })
+                } else {
+                    hookEraseAtPosition(canvas, coords.x, coords.y, paths)
                 }
             }
         }
@@ -403,7 +386,6 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     const handlePointerUp = (e: React.PointerEvent) => {
         (e.target as Element).releasePointerCapture(e.pointerId)
 
-        // 選択ドラッグ終了
         if (selectionState?.isDragging) {
             onSelectionDragEnd?.()
             return
@@ -412,29 +394,60 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         if (isDrawing) {
             if (isInteractive) hookStopDrawing()
         } else if (isErasing) {
-            if (isInteractive) hookStopErasing()
+            if (isInteractive) {
+                hookStopErasing()
+                const ctx = liveCanvasRef.current?.getContext('2d')
+                if (ctx && liveCanvasRef.current) {
+                    ctx.clearRect(0, 0, liveCanvasRef.current.width, liveCanvasRef.current.height)
+                }
+            }
         }
     }
 
     return (
-        <canvas
-            ref={canvasRef}
+        <div
             className={className}
-            width={width}
-            height={height}
             style={{
-                cursor: isInteractive
-                    ? (isDrawing ? ICON_SVG.penCursor(color) : ICON_SVG.eraserCursor)
-                    : 'default',
-                touchAction: 'none',
+                position: 'relative',
+                width: width,
+                height: height,
                 ...style
             }}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerUp}
-            onPointerLeave={handlePointerUp}
-        />
+        >
+            {/* Static Layer (Bottom) */}
+            <canvas
+                ref={staticCanvasRef}
+                width={width}
+                height={height}
+                style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    pointerEvents: 'none',
+                    zIndex: 0
+                }}
+            />
+            {/* Live Layer (Top) */}
+            <canvas
+                ref={liveCanvasRef}
+                width={width}
+                height={height}
+                style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    zIndex: 1,
+                    cursor: isInteractive
+                        ? (isDrawing ? ICON_SVG.penCursor(color) : ICON_SVG.eraserCursor)
+                        : 'default',
+                    touchAction: 'none'
+                }}
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerUp}
+                onPointerLeave={handlePointerUp}
+            />
+        </div>
     )
 })
-
