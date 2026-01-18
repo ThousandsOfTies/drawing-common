@@ -251,6 +251,9 @@ export const useDrawing = (
     // Catmull-Rom Spline (Interpolating Spline) を使用して、点の上を通過する曲線を生成する
     // Midpoint Spline（以前の実装）は「角の内側」を通るため、高速描画時（点が粗い時）にショートカット（弦）のような見た目になる問題を解決。
 
+    // startIdxの定義を復元
+    const startIdx = Math.max(1, oldLength)
+
     // 少なくとも2点あれば線は引ける
     if (newLength >= 2) {
       ctx.beginPath()
