@@ -322,7 +322,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     // --- VISUAL DEBUGGING START ---
     const [debugLogs, setDebugLogs] = useState<string[]>([])
     const addDebugLog = (msg: string) => {
-        setDebugLogs(prev => [`${new Date().toLocaleTimeString().split(' ')[0]}.${new Date().getMilliseconds()} ${msg}`, ...prev].slice(0, 8))
+        setDebugLogs(prev => [`${new Date().toLocaleTimeString().split(' ')[0]}.${new Date().getMilliseconds()} ${msg}`, ...prev].slice(0, 15))
     }
     const instanceId = useMemo(() => Math.random().toString(36).slice(2, 6).toUpperCase(), [])
     // --- VISUAL DEBUGGING END ---
@@ -377,57 +377,54 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
 
 
     const handlePointerMove = (e: React.PointerEvent) => {
-        // addDebugLog(`↔️ Move: ${e.pointerType}`) // Too noisy for move? Maybe just keep it for now.
-
-        if (stylusOnly && isDrawing && e.pointerType !== 'pen') {
-            // Move block logs are too spammy, maybe skip logging or log once?
-            // logging is fine for short debug sessions.
+        // Strict Mode Check
+        if (stylusOnly && isDrawing && isInteractive && e.pointerType !== 'pen' && (e.buttons === 1 || e.pressure > 0)) {
+            // Only log if it would have been a drawing move
+            // addDebugLog(`🚫 Move Blocked: ${e.pointerType}`)
             return
         }
 
-        // addDebugLog(`✅ ALLOWED Move: ${e.pointerType}`)
-
-        if (selectionState?.isDragging) {
-            const point = toNormalizedCoordinates(e)
-            if (point) onSelectionDrag?.(point)
-            return
-        }
-
-        if (isDrawing && isInteractive) {
-            const nativeEvent = e.nativeEvent as PointerEvent
-            // @ts-ignore
-            if (nativeEvent.getCoalescedEvents) {
-                // @ts-ignore
-                const coalescedContexts = nativeEvent.getCoalescedEvents()
-                const points = coalescedContexts
-                    .map((evt: PointerEvent) => toCanvasCoordinates(evt))
-                    .filter((p: { x: number; y: number } | null): p is { x: number, y: number } => p !== null)
-
-                if (points.length > 0) {
-                    drawBatch(points)
-                }
-            } else {
+        if (isDrawing) {
+            if (isInteractive && (e.buttons === 1 || e.pointerType === 'touch' || e.pointerType === 'pen')) {
                 const coords = toCanvasCoordinates(e)
-                if (coords) hookContinueDrawing(coords.x, coords.y)
-            }
-        } else if (isErasing && isInteractive) {
-            const coords = toCanvasCoordinates(e)
-            const canvas = liveCanvasRef.current
-            if (e.buttons === 1 && coords && canvas) {
-                const nativeEvent = e.nativeEvent as PointerEvent
+                // Use coalesced events for higher precision
                 // @ts-ignore
-                if (nativeEvent.getCoalescedEvents) {
-                    // @ts-ignore
-                    const coalescedEvents = nativeEvent.getCoalescedEvents()
-                    // @ts-ignore
-                    coalescedEvents.forEach((evt: PointerEvent) => {
-                        const evtCoords = toCanvasCoordinates(evt)
-                        if (evtCoords) {
-                            hookEraseAtPosition(canvas, evtCoords.x, evtCoords.y, paths)
+                const events = (e.getCoalescedEvents ? e.getCoalescedEvents() : [e]) as React.PointerEvent[]
+
+                if (coords) {
+                    // Log only 1 in 10 moves to avoid spam, or log "Move" once per stroke?
+                    // No, spam is fine for now if big enough
+                    // addDebugLog(`Move: ${events.length} evts`)
+                    events.forEach((ev: React.PointerEvent) => {
+                        const c = toCanvasCoordinates(ev)
+                        if (c && isCurrentlyDrawing) { // Only if we already started
+                            hookContinueDrawing(c.x, c.y)
                         }
                     })
-                } else {
-                    hookEraseAtPosition(canvas, coords.x, coords.y, paths)
+                }
+
+                if (hasSelection) {
+                    const point = toNormalizedCoordinates(e)
+                    if (point && selectionState?.isDragging) {
+                        onSelectionDrag?.(point)
+                    }
+                }
+            }
+        } else if (isErasing) {
+            if (isInteractive) {
+                const coords = toCanvasCoordinates(e)
+                if (coords && liveCanvasRef.current) {
+                    // Check button state for mouse (touch/pen usually implied by move if down? no, need pressed check)
+                    // For pointer events, buttons===1 means primary button (touch/pen contact)
+                    if (e.buttons === 1) {
+                        // Coalesced support for eraser too?
+                        // @ts-ignore
+                        const events = (e.getCoalescedEvents ? e.getCoalescedEvents() : [e]) as React.PointerEvent[]
+                        events.forEach((ev: React.PointerEvent) => {
+                            const c = toCanvasCoordinates(ev)
+                            if (c) hookEraseAtPosition(liveCanvasRef.current!, c.x, c.y, paths)
+                        })
+                    }
                 }
             }
         }
@@ -435,16 +432,16 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
 
     const handlePointerUp = (e: React.PointerEvent) => {
         addDebugLog(`⬆️ Up: ${e.pointerType}`)
-
+        // Strict Mode Check
         if (stylusOnly && isDrawing && e.pointerType !== 'pen') {
-            addDebugLog(`🚫 BLOCKED Up (Not Pen): ${e.pointerType}`)
-                ; (e.target as Element).releasePointerCapture(e.pointerId)
+            addDebugLog(`🚫 Up Blocked: ${e.pointerType}`)
             return
         }
+        addDebugLog(`✅ ALLOWED Up: ${e.pointerType}`)
 
-        addDebugLog(`✅ ALLOWED Up: ${e.pointerType}`);
-
-        (e.target as Element).releasePointerCapture(e.pointerId)
+        if ((e.target as Element).hasPointerCapture(e.pointerId)) {
+            (e.target as Element).releasePointerCapture(e.pointerId)
+        }
 
         if (selectionState?.isDragging) {
             onSelectionDragEnd?.()
@@ -470,64 +467,43 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
 
 
     return (
-        <div
-            className={className}
-            style={{
-                position: 'relative',
-                width: width,
-                height: height,
-                ...style
-            }}
-        >
-            {/* Visual Debug Overlay */}
+        <div style={{ position: 'relative', width, height, touchAction: 'none' }} className={className}>
+            {/* Visual Debug Overlay - INCREASED SIZE */}
             <div style={{
                 position: 'absolute',
-                top: 0,
-                right: 0,
-                backgroundColor: 'rgba(0,0,0,0.7)',
-                color: 'lime',
-                fontSize: '10px',
-                padding: '4px',
-                zIndex: 9999,
+                top: 10,
+                right: 10,
+                background: 'rgba(0, 0, 0, 0.7)',
+                color: '#0f0',
+                padding: '16px',
+                borderRadius: '8px',
                 pointerEvents: 'none',
-                maxWidth: '250px',
-                fontFamily: 'monospace'
+                zIndex: 9999,
+                fontSize: '24px', // Increased from 10px
+                fontFamily: 'monospace',
+                whiteSpace: 'pre-wrap',
+                maxWidth: '600px', // Increased width
+                maxHeight: '80vh', // Increased height
+                overflow: 'hidden'
             }}>
-                <div>ID: {instanceId}</div>
-                <div>Paths: {paths.length}</div>
-                {/* <div>Last Pen: (Removed in Strict Mode)</div> */}
-                <hr style={{ borderColor: '#444' }} />
-                {debugLogs.map((log, i) => <div key={i}>{log}</div>)}
+                <div style={{ fontWeight: 'bold', fontSize: '28px', borderBottom: '1px solid #444', marginBottom: '8px' }}>ID: {instanceId}</div>
+                <div style={{ fontSize: '24px', marginBottom: '8px' }}>Paths: {paths.length}</div>
+                {debugLogs.map((log, i) => (
+                    <div key={i}>{log}</div>
+                ))}
             </div>
 
-            {/* Static Layer (Bottom) */}
             <canvas
                 ref={staticCanvasRef}
                 width={width}
                 height={height}
-                style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    pointerEvents: 'none',
-                    zIndex: 0
-                }}
+                style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', zIndex: 1 }}
             />
-            {/* Live Layer (Top) */}
             <canvas
                 ref={liveCanvasRef}
                 width={width}
                 height={height}
-                style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    zIndex: 1,
-                    cursor: isInteractive
-                        ? (isDrawing ? ICON_SVG.penCursor(color) : ICON_SVG.eraserCursor)
-                        : 'default',
-                    touchAction: 'none'
-                }}
+                style={{ position: 'absolute', top: 0, left: 0, zIndex: 2, touchAction: 'none' }}
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
