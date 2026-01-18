@@ -480,8 +480,8 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
                 maxWidth: '250px',
                 fontFamily: 'monospace'
             }}>
-                <div>Paths: {debugPathCount}</div>
-                <div>Last Pen: {lastPenTimeRef.current ? (Date.now() - lastPenTimeRef.current) + 'ms ago' : 'None'}</div>
+                <div>Paths: {paths.length}</div>
+                {/* <div>Last Pen: (Removed in Strict Mode)</div> */}
                 <hr style={{ borderColor: '#444' }} />
                 {debugLogs.map((log, i) => <div key={i}>{log}</div>)}
             </div>
