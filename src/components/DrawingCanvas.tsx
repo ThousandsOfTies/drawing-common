@@ -427,9 +427,9 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
             (e.target as Element).releasePointerCapture(e.pointerId)
             return
         }
-        if (e.pointerType === 'pen') lastPenTimeRef.current = Date.now()
+        if (e.pointerType === 'pen') lastPenTimeRef.current = Date.now();
 
-            (e.target as Element).releasePointerCapture(e.pointerId)
+        (e.target as Element).releasePointerCapture(e.pointerId)
 
         if (selectionState?.isDragging) {
             onSelectionDragEnd?.()
