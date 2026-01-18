@@ -230,6 +230,9 @@ export const useDrawing = (
       const dist = Math.sqrt(dx * dx + dy * dy)
       const threshold = 5 / Math.min(canvas.width, canvas.height)
 
+      // Coalesced Eventsを使用するため、手動補間は無効化（二重線・ノイズ防止）
+      // ハードウェアからの高精細な入力(120Hz/240Hz)をそのまま信頼する
+      /*
       if (dist > threshold) {
         const steps = Math.min(10, Math.floor(dist / (threshold / 2)))
         for (let i = 1; i < steps; i++) {
@@ -240,13 +243,27 @@ export const useDrawing = (
           })
         }
       }
+      */
     }
 
     // 補間ポイント + 新しいポイントを追加
     const allNewPoints = [...interpolatedPoints, ...normalizedPoints]
 
     // ポイントを追加しながら描画
+    // ノイズフィルタ：直前のポイントと近すぎる場合はスキップ
+    const minDistance = 0.5 / Math.min(canvas.width, canvas.height) // 0.5px相当
+
     for (const point of allNewPoints) {
+      // 重複チェック
+      const currentLast = path.points[path.points.length - 1]
+      if (currentLast) {
+        const dx = point.x - currentLast.x
+        const dy = point.y - currentLast.y
+        if (Math.sqrt(dx * dx + dy * dy) < minDistance) {
+          continue
+        }
+      }
+
       path.points.push(point)
       const points = path.points
       const len = points.length
