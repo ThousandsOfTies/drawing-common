@@ -317,8 +317,9 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         // パームリジェクション (Touchは無視)
         if (stylusOnly && isDrawing && e.pointerType === 'touch') return
 
-        // ゴーストマウス対策: ペン入力直後(500ms以内)のマウスイベントは無視
-        if (e.pointerType === 'mouse' && Date.now() - lastPenTimeRef.current < 500) {
+        // ゴーストマウス対策: ペン入力直後(1500ms以内)のマウスイベントは無視
+        if (e.pointerType === 'mouse' && Date.now() - lastPenTimeRef.current < 1500) {
+            console.log('[DrawingCanvas] Blocked Ghost Mouse', { diff: Date.now() - lastPenTimeRef.current })
             return
         }
 
@@ -326,6 +327,8 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         if (e.pointerType === 'pen') {
             lastPenTimeRef.current = Date.now()
         }
+
+        console.log('[DrawingCanvas] PointerDown', { type: e.pointerType, tool, isDrawing })
 
         if (hasSelection && isDrawing) {
             const point = toNormalizedCoordinates(e)
@@ -366,7 +369,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
 
         // ゴーストマウス対策 & ペン時刻更新
         if (e.pointerType === 'mouse') {
-            if (Date.now() - lastPenTimeRef.current < 500) return
+            if (Date.now() - lastPenTimeRef.current < 1500) return
         } else if (e.pointerType === 'pen') {
             lastPenTimeRef.current = Date.now()
         }
@@ -423,7 +426,8 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
             (e.target as Element).releasePointerCapture(e.pointerId)
             return
         }
-        if (e.pointerType === 'mouse' && Date.now() - lastPenTimeRef.current < 500) {
+        if (e.pointerType === 'mouse' && Date.now() - lastPenTimeRef.current < 1500) {
+            // console.log('[DrawingCanvas] Blocked Ghost Mouse Up')
             (e.target as Element).releasePointerCapture(e.pointerId)
             return
         }
