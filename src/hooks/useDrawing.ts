@@ -360,4 +360,5 @@ export const useDrawing = (
     stopDrawing,
     cancelDrawing
   }
+}
 
