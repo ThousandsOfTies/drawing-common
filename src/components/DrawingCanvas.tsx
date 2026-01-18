@@ -142,6 +142,13 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         onPathsChange?.(newPaths)
     })
 
+    // Debug paths updates
+    useEffect(() => {
+        if (paths.length > 0) {
+            addDebugLog(`🔄 Paths Update: ${paths.length}`)
+        }
+    }, [paths.length])
+
     // 再描画ロジック（Static Layer / pathsが変わった時）
     useEffect(() => {
         const canvas = staticCanvasRef.current
