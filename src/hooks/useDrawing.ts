@@ -296,6 +296,19 @@ export const useDrawing = (
   const stopDrawing = () => {
     if (isDrawing && currentPathRef.current) {
       const newPath = currentPathRef.current
+      const canvas = canvasRef.current
+      const ctx = ctxRef.current
+
+      // ポイントが2つだけで終了した場合（直線）
+      // drawBatchでは二重線防止のために描画をスキップしているので、ここで描画する
+      if (newPath.points.length === 2 && canvas && ctx) {
+        const p0 = newPath.points[0]
+        const p1 = newPath.points[1]
+        ctx.beginPath()
+        ctx.moveTo(p0.x * canvas.width, p0.y * canvas.height)
+        ctx.lineTo(p1.x * canvas.width, p1.y * canvas.height)
+        ctx.stroke()
+      }
 
       // TEMPORARY: Disable scratch pattern detection due to false positives
       // TODO: Fix scratch pattern detection logic for drawBatch-drawn paths
