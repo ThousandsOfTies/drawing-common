@@ -274,93 +274,95 @@ export const useDrawing = (
         ctx.beginPath()
         if (i === 2) {
           // 最初の曲線セグメント
-          // もし「以前に直線(p0-p1)を描画済み」(=oldLengthが2だった)の場合、
-          // p0から描くと二重線になってしまうため、p1から描き始める
+
+          // ケース1: 以前のバッチで [p0, p1] の直線を描画済みの場合 (oldLength === 2)
+          // p0からカーブを描くと、既存の直線 p0-p1 と重なって「二重線」や「弦（ショートカット）」のような
+          // アーティファクトが発生する。
+          // そのため、描画済みの p1 から開始し、p1 -> mid(p1, p2) への接続を描く。
           if (oldLength === 2) {
-            // 最初の曲線セグメント
-
-            // ケース1: 以前のバッチで [p0, p1] の直線を描画済みの場合 (oldLength === 2)
-            // p0からカーブを描くと、既存の直線 p0-p1 と重なって「二重線」や「弦（ショートカット）」のような
-            // アーティファクトが発生する。
-            // そのため、描画済みの p1 から開始し、p1 -> mid(p1, p2) への接続を描く。
-            if (oldLength === 2) {
-              ctx.moveTo(p1.x * canvas.width, p1.y * canvas.height)
-            }
-            // ケース2: 今回のバッチで p0, p1, p2... と一気に描く場合
-            // まだ何も描画されていないので、p0 から滑らかな曲線をスタートさせる。
-            else {
-              ctx.moveTo(p0.x * canvas.width, p0.y * canvas.height)
-            }
-          } else {
-            // 中間のセグメント
-            const prevEndX = (p0.x + p1.x) / 2 * canvas.width
-            const prevEndY = (p0.y + p1.y) / 2 * canvas.height
-            ctx.moveTo(prevEndX, prevEndY)
+            ctx.moveTo(p1.x * canvas.width, p1.y * canvas.height)
           }
-          ctx.quadraticCurveTo(cpX, cpY, endX, endY)
-          ctx.stroke()
-        }
-      }
-    }
-
-    const stopDrawing = () => {
-      if (isDrawing && currentPathRef.current) {
-        const newPath = currentPathRef.current
-        const canvas = canvasRef.current
-        const ctx = ctxRef.current
-
-        // ポイントが2つだけで終了した場合（直線）
-        // drawBatchでは二重線防止のために描画をスキップしているので、ここで描画する
-        if (newPath.points.length === 2 && canvas && ctx) {
-          const p0 = newPath.points[0]
-          const p1 = newPath.points[1]
-          ctx.beginPath()
-          ctx.moveTo(p0.x * canvas.width, p0.y * canvas.height)
-          ctx.lineTo(p1.x * canvas.width, p1.y * canvas.height)
-          ctx.stroke()
-        }
-
-        // TEMPORARY: Disable scratch pattern detection due to false positives
-        // TODO: Fix scratch pattern detection logic for drawBatch-drawn paths
-        /*
-        if (isScratchPattern(newPath)) {
-          if (options.onScratchComplete) {
-            options.onScratchComplete(newPath)
+          // ケース2: 今回のバッチで p0, p1, p2... と一気に描く場合
+          // まだ何も描画されていないので、p0 から滑らかな曲線をスタートさせる。
+          else {
+            ctx.moveTo(p0.x * canvas.width, p0.y * canvas.height)
           }
         } else {
-          if (options.onPathComplete) {
-            options.onPathComplete(newPath)
-          }
+          // 中間のセグメント
+          const prevEndX = (p0.x + p1.x) / 2 * canvas.width
+          const prevEndY = (p0.y + p1.y) / 2 * canvas.height
+          ctx.moveTo(prevEndX, prevEndY)
         }
-        */
-
-        // Always call onPathComplete (scratch pattern detection disabled)
-        if (options.onPathComplete) {
-          options.onPathComplete(newPath)
-        }
+      } else {
+        // 中間のセグメント
+        const prevEndX = (p0.x + p1.x) / 2 * canvas.width
+        const prevEndY = (p0.y + p1.y) / 2 * canvas.height
+        ctx.moveTo(prevEndX, prevEndY)
       }
+      ctx.quadraticCurveTo(cpX, cpY, endX, endY)
+      ctx.stroke()
+    }
+  }
+}
 
-      currentPathRef.current = null
-      ctxRef.current = null
-      setIsDrawing(false)
+const stopDrawing = () => {
+  if (isDrawing && currentPathRef.current) {
+    const newPath = currentPathRef.current
+    const canvas = canvasRef.current
+    const ctx = ctxRef.current
+
+    // ポイントが2つだけで終了した場合（直線）
+    // drawBatchでは二重線防止のために描画をスキップしているので、ここで描画する
+    if (newPath.points.length === 2 && canvas && ctx) {
+      const p0 = newPath.points[0]
+      const p1 = newPath.points[1]
+      ctx.beginPath()
+      ctx.moveTo(p0.x * canvas.width, p0.y * canvas.height)
+      ctx.lineTo(p1.x * canvas.width, p1.y * canvas.height)
+      ctx.stroke()
     }
 
-    /**
-     * 描画をキャンセル（パスを保存せずにリセット）
-     * なげなわ選択モード発動時などに使用
-     */
-    const cancelDrawing = () => {
-      currentPathRef.current = null
-      ctxRef.current = null
-      setIsDrawing(false)
+    // TEMPORARY: Disable scratch pattern detection due to false positives
+    // TODO: Fix scratch pattern detection logic for drawBatch-drawn paths
+    /*
+    if (isScratchPattern(newPath)) {
+      if (options.onScratchComplete) {
+        options.onScratchComplete(newPath)
+      }
+    } else {
+      if (options.onPathComplete) {
+        options.onPathComplete(newPath)
+      }
     }
+    */
 
-    return {
-      isDrawing,
-      startDrawing,
-      draw, // 名前変更 continueDrawing -> draw
-      drawBatch, // Coalesced Events用
-      stopDrawing,
-      cancelDrawing
+    // Always call onPathComplete (scratch pattern detection disabled)
+    if (options.onPathComplete) {
+      options.onPathComplete(newPath)
     }
+  }
+
+  currentPathRef.current = null
+  ctxRef.current = null
+  setIsDrawing(false)
+}
+
+/**
+ * 描画をキャンセル（パスを保存せずにリセット）
+ * なげなわ選択モード発動時などに使用
+ */
+const cancelDrawing = () => {
+  currentPathRef.current = null
+  ctxRef.current = null
+  setIsDrawing(false)
+}
+
+return {
+  isDrawing,
+  startDrawing,
+  draw, // 名前変更 continueDrawing -> draw
+  drawBatch, // Coalesced Events用
+  stopDrawing,
+  cancelDrawing
+}
   }
