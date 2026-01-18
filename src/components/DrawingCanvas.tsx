@@ -83,6 +83,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         isDrawing: isCurrentlyDrawing,
         startDrawing: hookStartDrawing,
         draw: hookContinueDrawing,
+        drawBatch, // Destructure drawBatch
         stopDrawing: hookStopDrawing
     } = useDrawing(canvasRef, {
         width: size,
@@ -176,7 +177,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     }, [paths, width, height, selectionState])
 
     // Canvas座標変換ヘルパー
-    const toCanvasCoordinates = (e: React.MouseEvent | React.TouchEvent): { x: number, y: number } | null => {
+    const toCanvasCoordinates = (e: React.MouseEvent | React.TouchEvent | React.PointerEvent | PointerEvent): { x: number, y: number } | null => {
         const canvas = canvasRef.current
         if (!canvas) return null
 
@@ -252,7 +253,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     }
 
     // 正規化座標へ変換（0-1）
-    const toNormalizedCoordinates = (e: React.MouseEvent | React.TouchEvent): DrawingPoint | null => {
+    const toNormalizedCoordinates = (e: React.MouseEvent | React.TouchEvent | React.PointerEvent): DrawingPoint | null => {
         const coords = toCanvasCoordinates(e)
         if (!coords) return null
         const canvas = canvasRef.current
@@ -328,11 +329,15 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         if (isDrawing) {
             if (isInteractive) {
                 // Coalesced Events（高精細イベント）の取得と処理
-                if (e.getCoalescedEvents) {
-                    const coalescedContexts = e.getCoalescedEvents()
+                // TypeScript fix: getCoalescedEvents is standard but React types might miss it or it's native
+                const nativeEvent = e.nativeEvent as PointerEvent
+                // @ts-ignore: getCoalescedEvents might be missing in some TSC configs or React types
+                if (nativeEvent.getCoalescedEvents) {
+                    // @ts-ignore
+                    const coalescedContexts = nativeEvent.getCoalescedEvents()
                     const points = coalescedContexts
-                        .map(evt => toCanvasCoordinates(evt))
-                        .filter((p): p is { x: number, y: number } => p !== null)
+                        .map((evt: PointerEvent) => toCanvasCoordinates(evt))
+                        .filter((p: { x: number; y: number } | null): p is { x: number, y: number } => p !== null)
 
                     if (points.length > 0) {
                         drawBatch(points)
@@ -350,9 +355,13 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
                 // ボタン押下チェック (PointerEvent.buttons: 1 = Left Mouse / Pen Tip)
                 if (e.buttons === 1 && coords && canvas) {
                     // Coalesced Events for Eraser (Smoother erasing)
-                    if (e.getCoalescedEvents) {
-                        const coalescedEvents = e.getCoalescedEvents()
-                        coalescedEvents.forEach(evt => {
+                    const nativeEvent = e.nativeEvent as PointerEvent
+                    // @ts-ignore
+                    if (nativeEvent.getCoalescedEvents) {
+                        // @ts-ignore
+                        const coalescedEvents = nativeEvent.getCoalescedEvents()
+                        // @ts-ignore
+                        coalescedEvents.forEach((evt: PointerEvent) => {
                             const evtCoords = toCanvasCoordinates(evt)
                             if (evtCoords) {
                                 hookEraseAtPosition(canvas, evtCoords.x, evtCoords.y, paths)
