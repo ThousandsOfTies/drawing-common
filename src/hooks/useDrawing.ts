@@ -212,11 +212,12 @@ export const useDrawing = (
 
     const path = currentPathRef.current
 
-    // 正規化座標に変換
     const normalizedPoints = points.map(p => ({
       x: p.x / canvas.width,
       y: p.y / canvas.height
     }))
+
+    const ctx = ctxRef.current!
 
     // Coalesced Eventsからの入力は高精細なので補間は不要
     // 単純にポイントを追加し、描画ロジックを回す
