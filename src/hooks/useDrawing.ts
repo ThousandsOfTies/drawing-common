@@ -314,49 +314,50 @@ export const useDrawing = (
     }
 
     const stopDrawing = () => {
+      if (isDrawing && currentPathRef.current) {
+        const newPath = currentPathRef.current
 
-      // TEMPORARY: Disable scratch pattern detection due to false positives
-      // TODO: Fix scratch pattern detection logic for drawBatch-drawn paths
-      // if (isScratchPattern(newPath)) {
-      //   // スクラッチの場合はonScratchCompleteを呼び出す
-      //   if (options.onScratchComplete) {
-      //     options.onScratchComplete(newPath)
-      //   }
-      //   // スクラッチ自体は保存しない（onPathCompleteは呼ばない）
-      // } else {
-      //   // 通常の描画の場合
-      //   if (options.onPathComplete) {
-      //     options.onPathComplete(newPath)
-      //   }
-      // }
+        // TEMPORARY: Disable scratch pattern detection due to false positives
+        // TODO: Fix scratch pattern detection logic for drawBatch-drawn paths
+        /*
+        if (isScratchPattern(newPath)) {
+          if (options.onScratchComplete) {
+            options.onScratchComplete(newPath)
+          }
+        } else {
+          if (options.onPathComplete) {
+            options.onPathComplete(newPath)
+          }
+        }
+        */
 
-      // Always call onPathComplete (scratch pattern detection disabled)
-      if (options.onPathComplete) {
-        options.onPathComplete(newPath)
+        // Always call onPathComplete (scratch pattern detection disabled)
+        if (options.onPathComplete) {
+          options.onPathComplete(newPath)
+        }
       }
 
       currentPathRef.current = null
       ctxRef.current = null
       setIsDrawing(false)
     }
-  }
 
-  /**
-   * 描画をキャンセル（パスを保存せずにリセット）
-   * なげなわ選択モード発動時などに使用
-   */
-  const cancelDrawing = () => {
-    currentPathRef.current = null
-    ctxRef.current = null
-    setIsDrawing(false)
-  }
+    /**
+     * 描画をキャンセル（パスを保存せずにリセット）
+     * なげなわ選択モード発動時などに使用
+     */
+    const cancelDrawing = () => {
+      currentPathRef.current = null
+      ctxRef.current = null
+      setIsDrawing(false)
+    }
 
-  return {
-    isDrawing,
-    startDrawing,
-    draw, // 名前変更 continueDrawing -> draw
-    drawBatch, // Coalesced Events用
-    stopDrawing,
-    cancelDrawing
+    return {
+      isDrawing,
+      startDrawing,
+      draw, // 名前変更 continueDrawing -> draw
+      drawBatch, // Coalesced Events用
+      stopDrawing,
+      cancelDrawing
+    }
   }
-}
