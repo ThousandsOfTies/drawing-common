@@ -314,14 +314,17 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
 
     // 統合ハンドラ: Pointer Events
     const handlePointerDown = (e: React.PointerEvent) => {
+        addDebugLog(`⬇️ Down: ${e.pointerType}`)
         // パームリジェクション (Touchは無視)
         if (stylusOnly && isDrawing && e.pointerType === 'touch') return
 
         // ゴーストマウス対策: ペン入力直後(1500ms以内)のマウスイベントは無視
         if (e.pointerType === 'mouse' && Date.now() - lastPenTimeRef.current < 1500) {
             console.log('[DrawingCanvas] Blocked Ghost Mouse', { diff: Date.now() - lastPenTimeRef.current })
+            addDebugLog(`🚫 BLOCKED Mouse (diff=${Date.now() - lastPenTimeRef.current}ms)`)
             return
         }
+        addDebugLog(`✅ ALLOWED Down: ${e.pointerType}`)
 
         // ペン入力時刻を更新
         if (e.pointerType === 'pen') {
@@ -365,14 +368,19 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     }
 
     const handlePointerMove = (e: React.PointerEvent) => {
+        addDebugLog(`↔️ Move: ${e.pointerType}`)
         if (stylusOnly && isDrawing && e.pointerType === 'touch') return
 
         // ゴーストマウス対策 & ペン時刻更新
         if (e.pointerType === 'mouse') {
-            if (Date.now() - lastPenTimeRef.current < 1500) return
+            if (Date.now() - lastPenTimeRef.current < 1500) {
+                addDebugLog(`🚫 BLOCKED Move (diff=${Date.now() - lastPenTimeRef.current}ms)`)
+                return
+            }
         } else if (e.pointerType === 'pen') {
             lastPenTimeRef.current = Date.now()
         }
+        addDebugLog(`✅ ALLOWED Move: ${e.pointerType}`)
 
         if (selectionState?.isDragging) {
             const point = toNormalizedCoordinates(e)
@@ -421,6 +429,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     }
 
     const handlePointerUp = (e: React.PointerEvent) => {
+        addDebugLog(`⬆️ Up: ${e.pointerType}`)
         // パーム＆ゴースト対策 (Upはそこまで厳密でなくても良いが念のため)
         if (stylusOnly && isDrawing && e.pointerType === 'touch') {
             (e.target as Element).releasePointerCapture(e.pointerId)
@@ -428,9 +437,11 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         }
         if (e.pointerType === 'mouse' && Date.now() - lastPenTimeRef.current < 1500) {
             // console.log('[DrawingCanvas] Blocked Ghost Mouse Up')
-            (e.target as Element).releasePointerCapture(e.pointerId)
+            addDebugLog(`🚫 BLOCKED Up (diff=${Date.now() - lastPenTimeRef.current}ms)`)
+                ; (e.target as Element).releasePointerCapture(e.pointerId)
             return
         }
+        addDebugLog(`✅ ALLOWED Up: ${e.pointerType}`)
         if (e.pointerType === 'pen') lastPenTimeRef.current = Date.now();
 
         (e.target as Element).releasePointerCapture(e.pointerId)
@@ -441,7 +452,10 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         }
 
         if (isDrawing) {
-            if (isInteractive) hookStopDrawing()
+            if (isInteractive) {
+                hookStopDrawing()
+                addDebugLog(`🏁 Stroke Finished`)
+            }
         } else if (isErasing) {
             if (isInteractive) {
                 hookStopErasing()
@@ -463,6 +477,26 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
                 ...style
             }}
         >
+            {/* Visual Debug Overlay */}
+            <div style={{
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                backgroundColor: 'rgba(0,0,0,0.7)',
+                color: 'lime',
+                fontSize: '10px',
+                padding: '4px',
+                zIndex: 9999,
+                pointerEvents: 'none',
+                maxWidth: '250px',
+                fontFamily: 'monospace'
+            }}>
+                <div>Paths: {debugPathCount}</div>
+                <div>Last Pen: {lastPenTimeRef.current ? (Date.now() - lastPenTimeRef.current) + 'ms ago' : 'None'}</div>
+                <hr style={{ borderColor: '#444' }} />
+                {debugLogs.map((log, i) => <div key={i}>{log}</div>)}
+            </div>
+
             {/* Static Layer (Bottom) */}
             <canvas
                 ref={staticCanvasRef}
