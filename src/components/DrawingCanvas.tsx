@@ -104,6 +104,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
             // 描画完了後、Live Canvas（上層）をクリアして、Static Canvas（下層）への反映と交代する
             const ctx = liveCanvasRef.current?.getContext('2d')
             if (ctx && liveCanvasRef.current) {
+                // 明示的にクリア
                 ctx.clearRect(0, 0, liveCanvasRef.current.width, liveCanvasRef.current.height)
             }
         },
@@ -166,26 +167,38 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
                 const w = canvas.width
                 const h = canvas.height
 
+                // 開始点
                 ctx.moveTo(path.points[0].x * w, path.points[0].y * h)
 
                 if (path.points.length < 3) {
+                    // 直線 (2点)
                     for (let i = 1; i < path.points.length; i++) {
                         ctx.lineTo(path.points[i].x * w, path.points[i].y * h)
                     }
                 } else {
-                    // Midpoint Spline (Liveとロジックを統一)
-                    let i = 1
-                    for (; i < path.points.length - 1; i++) {
+                    // Catmull-Rom Spline (Interpolating Spline)
+                    // useDrawing.ts (Live Layer) と同じロジックを使用して、WYSIWYGを実現
+
+                    for (let i = 0; i < path.points.length - 1; i++) {
+                        const p0 = path.points[i - 1] || path.points[i]
                         const p1 = path.points[i]
                         const p2 = path.points[i + 1]
-                        const cpX = p1.x * w
-                        const cpY = p1.y * h
-                        const endX = (p1.x + p2.x) / 2 * w
-                        const endY = (p1.y + p2.y) / 2 * h
-                        ctx.quadraticCurveTo(cpX, cpY, endX, endY)
+                        const p3 = path.points[i + 2] || p2
+
+                        const p0x = p0.x * w, p0y = p0.y * h
+                        const p1x = p1.x * w, p1y = p1.y * h
+                        const p2x = p2.x * w, p2y = p2.y * h
+                        const p3x = p3.x * w, p3y = p3.y * h
+
+                        // Catmull-Rom -> Cubic Bezier Conversion
+                        const cp1x = p1x + (p2x - p0x) / 6
+                        const cp1y = p1y + (p2y - p0y) / 6
+
+                        const cp2x = p2x - (p3x - p1x) / 6
+                        const cp2y = p2y - (p3y - p1y) / 6
+
+                        ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2x, p2y)
                     }
-                    const last = path.points[path.points.length - 1]
-                    ctx.lineTo(last.x * w, last.y * h)
                 }
                 ctx.stroke()
             }
