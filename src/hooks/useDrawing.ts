@@ -276,14 +276,10 @@ export const useDrawing = (
           const prevEndY = (p0.y + p1.y) / 2 * canvas.height
           ctx.moveTo(prevEndX, prevEndY)
         }
-        // 中間のセグメント
-        const prevEndX = (p0.x + p1.x) / 2 * canvas.width
-        const prevEndY = (p0.y + p1.y) / 2 * canvas.height
-        ctx.moveTo(prevEndX, prevEndY)
-      }
 
-      ctx.quadraticCurveTo(cpX, cpY, endX, endY)
-      ctx.stroke()
+        ctx.quadraticCurveTo(cpX, cpY, endX, endY)
+        ctx.stroke()
+      }
     }
   }
 
