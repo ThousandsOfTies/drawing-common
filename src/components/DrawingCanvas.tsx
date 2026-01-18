@@ -392,15 +392,16 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
                 const events = (e.getCoalescedEvents ? e.getCoalescedEvents() : [e]) as React.PointerEvent[]
 
                 if (coords) {
-                    // Log only 1 in 10 moves to avoid spam, or log "Move" once per stroke?
-                    // No, spam is fine for now if big enough
-                    // addDebugLog(`Move: ${events.length} evts`)
                     events.forEach((ev: React.PointerEvent) => {
                         const c = toCanvasCoordinates(ev)
-                        if (c) { // Removed isCurrentlyDrawing check to fix race condition
+                        if (c) {
                             hookContinueDrawing(c.x, c.y)
+                        } else {
+                            // addDebugLog('❌ Move: Invalid Coords')
                         }
                     })
+                } else {
+                    addDebugLog('❌ Move: No Coords')
                 }
 
                 if (hasSelection) {
@@ -470,22 +471,23 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         <div style={{ position: 'relative', width, height, touchAction: 'none' }} className={className}>
             {/* Visual Debug Overlay */}
             <div style={{
-                position: 'absolute',
-                top: 50,
-                left: 10,
-                background: 'rgba(0, 0, 0, 0.7)',
+                position: 'fixed', // Fixed to viewport
+                top: 100,
+                left: 20,
+                background: 'rgba(0, 0, 0, 0.85)',
                 color: '#0f0',
-                padding: '8px',
+                padding: '12px',
                 borderRadius: '8px',
                 pointerEvents: 'none',
-                zIndex: 9999,
-                fontSize: '14px',
+                zIndex: 99999,
+                fontSize: '16px',
                 fontWeight: 'bold',
                 fontFamily: 'monospace',
                 whiteSpace: 'pre-wrap',
-                maxWidth: '600px',
-                maxHeight: '600px',
-                overflow: 'hidden'
+                maxWidth: '400px',
+                maxHeight: '400px',
+                overflowY: 'auto', // Scrollable
+                boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
             }}>
                 <div style={{ fontSize: '16px', borderBottom: '1px solid #444', marginBottom: '4px' }}>ID: {instanceId}</div>
                 <div style={{ fontSize: '14px', marginBottom: '4px' }}>Paths: {paths.length}</div>
