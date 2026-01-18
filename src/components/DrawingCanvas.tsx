@@ -87,7 +87,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         stopDrawing: hookStopDrawing
     } = useDrawing(canvasRef, {
         width: size,
-        color: '#0000FF', // FORCE BLUE for Debugging (User Request)
+        color,
         onPathComplete: (path) => {
             // なげなわ選択が有効で、ループとして認識された場合はパスを追加しない
             if (onLassoComplete && onLassoComplete(path)) {
