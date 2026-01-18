@@ -397,7 +397,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
                 if (coords) {
                     events.forEach((ev: React.PointerEvent) => {
                         const c = toCanvasCoordinates(ev)
-                        if (c && isCurrentlyDrawing) {
+                        if (c) {
                             hookContinueDrawing(c.x, c.y)
                         } else {
                             // addDebugLog('❌ Move: Invalid Coords')
