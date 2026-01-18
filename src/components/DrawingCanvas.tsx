@@ -80,6 +80,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
 
     // 2本指タップ検出用
     const twoFingerTapStartRef = useRef<{ time: number, dist: number } | null>(null)
+    const lastPathTimeRef = useRef(0)
 
     // useDrawing hook (Live Layerに描画)
     const {
@@ -93,6 +94,13 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         width: size,
         color,
         onPathComplete: (path) => {
+            const now = Date.now()
+            if (now - lastPathTimeRef.current < 50) {
+                addDebugLog(`⚠️ Ignored Double Path (${now - lastPathTimeRef.current}ms)`)
+                return
+            }
+            lastPathTimeRef.current = now
+
             addDebugLog(`🎁 Path Added (pts=${path.points.length})`)
 
             // なげなわ選択
@@ -509,7 +517,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
                 ref={liveCanvasRef}
                 width={width}
                 height={height}
-                style={{ position: 'absolute', top: 0, left: 0, zIndex: 2, touchAction: 'none', pointerEvents: 'all' }}
+                style={{ position: 'absolute', top: 0, left: 0, zIndex: 2, touchAction: 'none' }}
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
