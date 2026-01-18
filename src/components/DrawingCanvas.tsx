@@ -309,29 +309,25 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         }
     }
 
-    // ペン入力の最終時刻（ゴーストマウスイベント対策）
-    const lastPenTimeRef = useRef(0)
+    // --- VISUAL DEBUGGING START ---
+    const [debugLogs, setDebugLogs] = useState<string[]>([])
+    const addDebugLog = (msg: string) => {
+        setDebugLogs(prev => [`${new Date().toLocaleTimeString().split(' ')[0]}.${new Date().getMilliseconds()} ${msg}`, ...prev].slice(0, 8))
+    }
+    // --- VISUAL DEBUGGING END ---
 
     // 統合ハンドラ: Pointer Events
     const handlePointerDown = (e: React.PointerEvent) => {
         addDebugLog(`⬇️ Down: ${e.pointerType}`)
-        // パームリジェクション (Touchは無視)
-        if (stylusOnly && isDrawing && e.pointerType === 'touch') return
 
-        // ゴーストマウス対策: ペン入力直後(1500ms以内)のマウスイベントは無視
-        if (e.pointerType === 'mouse' && Date.now() - lastPenTimeRef.current < 1500) {
-            console.log('[DrawingCanvas] Blocked Ghost Mouse', { diff: Date.now() - lastPenTimeRef.current })
-            addDebugLog(`🚫 BLOCKED Mouse (diff=${Date.now() - lastPenTimeRef.current}ms)`)
+        // Strict Strict Pen Mode (stylusOnly時はペン以外完全遮断)
+        if (stylusOnly && isDrawing && e.pointerType !== 'pen') {
+            addDebugLog(`🚫 BLOCKED (Not Pen): ${e.pointerType}`)
             return
-        }
-        addDebugLog(`✅ ALLOWED Down: ${e.pointerType}`)
-
-        // ペン入力時刻を更新
-        if (e.pointerType === 'pen') {
-            lastPenTimeRef.current = Date.now()
         }
 
         console.log('[DrawingCanvas] PointerDown', { type: e.pointerType, tool, isDrawing })
+        addDebugLog(`✅ ALLOWED Down: ${e.pointerType}`)
 
         if (hasSelection && isDrawing) {
             const point = toNormalizedCoordinates(e)
@@ -368,19 +364,15 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     }
 
     const handlePointerMove = (e: React.PointerEvent) => {
-        addDebugLog(`↔️ Move: ${e.pointerType}`)
-        if (stylusOnly && isDrawing && e.pointerType === 'touch') return
+        // addDebugLog(`↔️ Move: ${e.pointerType}`) // Too noisy for move? Maybe just keep it for now.
 
-        // ゴーストマウス対策 & ペン時刻更新
-        if (e.pointerType === 'mouse') {
-            if (Date.now() - lastPenTimeRef.current < 1500) {
-                addDebugLog(`🚫 BLOCKED Move (diff=${Date.now() - lastPenTimeRef.current}ms)`)
-                return
-            }
-        } else if (e.pointerType === 'pen') {
-            lastPenTimeRef.current = Date.now()
+        if (stylusOnly && isDrawing && e.pointerType !== 'pen') {
+            // Move block logs are too spammy, maybe skip logging or log once?
+            // logging is fine for short debug sessions.
+            return
         }
-        addDebugLog(`✅ ALLOWED Move: ${e.pointerType}`)
+
+        // addDebugLog(`✅ ALLOWED Move: ${e.pointerType}`)
 
         if (selectionState?.isDragging) {
             const point = toNormalizedCoordinates(e)
@@ -430,19 +422,14 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
 
     const handlePointerUp = (e: React.PointerEvent) => {
         addDebugLog(`⬆️ Up: ${e.pointerType}`)
-        // パーム＆ゴースト対策 (Upはそこまで厳密でなくても良いが念のため)
-        if (stylusOnly && isDrawing && e.pointerType === 'touch') {
-            (e.target as Element).releasePointerCapture(e.pointerId)
-            return
-        }
-        if (e.pointerType === 'mouse' && Date.now() - lastPenTimeRef.current < 1500) {
-            // console.log('[DrawingCanvas] Blocked Ghost Mouse Up')
-            addDebugLog(`🚫 BLOCKED Up (diff=${Date.now() - lastPenTimeRef.current}ms)`)
+
+        if (stylusOnly && isDrawing && e.pointerType !== 'pen') {
+            addDebugLog(`🚫 BLOCKED Up (Not Pen): ${e.pointerType}`)
                 ; (e.target as Element).releasePointerCapture(e.pointerId)
             return
         }
-        addDebugLog(`✅ ALLOWED Up: ${e.pointerType}`)
-        if (e.pointerType === 'pen') lastPenTimeRef.current = Date.now();
+
+        addDebugLog(`✅ ALLOWED Up: ${e.pointerType}`);
 
         (e.target as Element).releasePointerCapture(e.pointerId)
 
@@ -467,70 +454,91 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         }
     }
 
+    if (selectionState?.isDragging) {
+        onSelectionDragEnd?.()
+        return
+    }
+
+    if (isDrawing) {
+        if (isInteractive) {
+            hookStopDrawing()
+            addDebugLog(`🏁 Stroke Finished`)
+        }
+    } else if (isErasing) {
+        if (isInteractive) {
+            hookStopErasing()
+            const ctx = liveCanvasRef.current?.getContext('2d')
+            if (ctx && liveCanvasRef.current) {
+                ctx.clearRect(0, 0, liveCanvasRef.current.width, liveCanvasRef.current.height)
+            }
+        }
+    }
+}
+
     return (
-        <div
-            className={className}
+    <div
+        className={className}
+        style={{
+            position: 'relative',
+            width: width,
+            height: height,
+            ...style
+        }}
+    >
+        {/* Visual Debug Overlay */}
+        <div style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            backgroundColor: 'rgba(0,0,0,0.7)',
+            color: 'lime',
+            fontSize: '10px',
+            padding: '4px',
+            zIndex: 9999,
+            pointerEvents: 'none',
+            maxWidth: '250px',
+            fontFamily: 'monospace'
+        }}>
+            <div>Paths: {debugPathCount}</div>
+            <div>Last Pen: {lastPenTimeRef.current ? (Date.now() - lastPenTimeRef.current) + 'ms ago' : 'None'}</div>
+            <hr style={{ borderColor: '#444' }} />
+            {debugLogs.map((log, i) => <div key={i}>{log}</div>)}
+        </div>
+
+        {/* Static Layer (Bottom) */}
+        <canvas
+            ref={staticCanvasRef}
+            width={width}
+            height={height}
             style={{
-                position: 'relative',
-                width: width,
-                height: height,
-                ...style
-            }}
-        >
-            {/* Visual Debug Overlay */}
-            <div style={{
                 position: 'absolute',
                 top: 0,
-                right: 0,
-                backgroundColor: 'rgba(0,0,0,0.7)',
-                color: 'lime',
-                fontSize: '10px',
-                padding: '4px',
-                zIndex: 9999,
+                left: 0,
                 pointerEvents: 'none',
-                maxWidth: '250px',
-                fontFamily: 'monospace'
-            }}>
-                <div>Paths: {debugPathCount}</div>
-                <div>Last Pen: {lastPenTimeRef.current ? (Date.now() - lastPenTimeRef.current) + 'ms ago' : 'None'}</div>
-                <hr style={{ borderColor: '#444' }} />
-                {debugLogs.map((log, i) => <div key={i}>{log}</div>)}
-            </div>
-
-            {/* Static Layer (Bottom) */}
-            <canvas
-                ref={staticCanvasRef}
-                width={width}
-                height={height}
-                style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    pointerEvents: 'none',
-                    zIndex: 0
-                }}
-            />
-            {/* Live Layer (Top) */}
-            <canvas
-                ref={liveCanvasRef}
-                width={width}
-                height={height}
-                style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    zIndex: 1,
-                    cursor: isInteractive
-                        ? (isDrawing ? ICON_SVG.penCursor(color) : ICON_SVG.eraserCursor)
-                        : 'default',
-                    touchAction: 'none'
-                }}
-                onPointerDown={handlePointerDown}
-                onPointerMove={handlePointerMove}
-                onPointerUp={handlePointerUp}
-                onPointerCancel={handlePointerUp}
-                onPointerLeave={handlePointerUp}
-            />
-        </div>
-    )
+                zIndex: 0
+            }}
+        />
+        {/* Live Layer (Top) */}
+        <canvas
+            ref={liveCanvasRef}
+            width={width}
+            height={height}
+            style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                zIndex: 1,
+                cursor: isInteractive
+                    ? (isDrawing ? ICON_SVG.penCursor(color) : ICON_SVG.eraserCursor)
+                    : 'default',
+                touchAction: 'none'
+            }}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            onPointerLeave={handlePointerUp}
+        />
+    </div>
+)
 })
