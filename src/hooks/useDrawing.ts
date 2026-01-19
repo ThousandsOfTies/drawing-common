@@ -220,7 +220,7 @@ export const useDrawing = (
     }))
 
     // バージョン識別用ログ
-    if (Math.random() < 0.01) console.log('useDrawing v0.2.14.l69 - LineTo + Jump Detection')
+    if (Math.random() < 0.01) console.log('useDrawing v0.2.14.l70 - Fixed Jump Detection (1% + Path Bug)')
 
     // 異常な飛び値（＝ストローク区切りの欠落）を検出
     // 閾値: 画面対角線の 5% 程度の二乗
