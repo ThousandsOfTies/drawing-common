@@ -167,17 +167,6 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
             ctx.lineWidth = path.width
 
             if (path.points.length > 0) {
-                // DEBUG: 再描画トレースマーカー（黄色のドット）
-                // サイズを2から4に変更して視認性を向上
-                ctx.save()
-                ctx.fillStyle = 'yellow'
-                path.points.forEach(pt => {
-                    ctx.beginPath()
-                    ctx.arc(pt.x * canvas.width, pt.y * canvas.height, 4, 0, Math.PI * 2)
-                    ctx.fill()
-                })
-                ctx.restore()
-
                 // ベジェ曲線で滑らかに描画（useDrawingと同じロジック）
                 const pts = path.points
                 if (pts.length === 1) {
