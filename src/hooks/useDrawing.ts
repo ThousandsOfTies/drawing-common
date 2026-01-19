@@ -247,41 +247,31 @@ export const useDrawing = (
     // 補間ポイント + 新しいポイントを追加
     const allNewPoints = [...interpolatedPoints, ...normalizedPoints]
 
-    // ポイントを追加しながら描画
+    // ポイントを追加しながら描画（単純なlineTo接続）
+    // Coalesced Eventsは十分に高精細なため、ベジェ補間なしでも滑らかに見える可能性が高い
+    // また、複雑な補間ロジックによるアーティファクト（弦など）を排除できる
+
+    ctx.beginPath()
+
+    // パスの開始点へ移動
+    // 既存の点がある場合はその最後の点からスタート
+    const prevPoints = path.points
+    if (prevPoints.length > 0) {
+      const lastPt = prevPoints[prevPoints.length - 1]
+      ctx.moveTo(lastPt.x * canvas.width, lastPt.y * canvas.height)
+    } else if (allNewPoints.length > 0) {
+      // 既存点がない場合はバッチの始点へ
+      const firstPt = allNewPoints[0]
+      ctx.moveTo(firstPt.x * canvas.width, firstPt.y * canvas.height)
+    }
+
+    // 全ての新しい点へ直線を引く
     for (const point of allNewPoints) {
       path.points.push(point)
-      const points = path.points
-      const len = points.length
-
-      if (len < 2) continue
-
-      if (len < 3) {
-        ctx.beginPath()
-        ctx.moveTo(points[0].x * canvas.width, points[0].y * canvas.height)
-        ctx.lineTo(points[1].x * canvas.width, points[1].y * canvas.height)
-        ctx.stroke()
-      } else {
-        const p0 = points[len - 3]
-        const p1 = points[len - 2]
-        const p2 = points[len - 1]
-
-        const cpX = p1.x * canvas.width
-        const cpY = p1.y * canvas.height
-        const endX = (p1.x + p2.x) / 2 * canvas.width
-        const endY = (p1.y + p2.y) / 2 * canvas.height
-
-        ctx.beginPath()
-        if (len === 3) {
-          ctx.moveTo(p0.x * canvas.width, p0.y * canvas.height)
-        } else {
-          const prevEndX = (p0.x + p1.x) / 2 * canvas.width
-          const prevEndY = (p0.y + p1.y) / 2 * canvas.height
-          ctx.moveTo(prevEndX, prevEndY)
-        }
-        ctx.quadraticCurveTo(cpX, cpY, endX, endY)
-        ctx.stroke()
-      }
+      ctx.lineTo(point.x * canvas.width, point.y * canvas.height)
     }
+
+    ctx.stroke()
   }
 
   const stopDrawing = () => {
