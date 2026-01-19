@@ -228,7 +228,9 @@ export const useDrawing = (
     const thresholdSq = threshold * threshold
 
     // 前回の最後の点（基準点）
-    let path = currentPathRef.current`r`n    const prevPoints = path.points
+    let path = currentPathRef.current
+    const prevPoints = path.points
+    const prevPoints = path.points
     let lastPt = prevPoints.length > 0 ? prevPoints[prevPoints.length - 1] : normalizedPoints[0]
 
     // バッチ内の各点を処理
@@ -256,7 +258,8 @@ export const useDrawing = (
             color: path.color,
             width: path.width
           }
-          currentPathRef.current = newPath`r`n          path = newPath  // 重要: ローカル変数も更新
+          currentPathRef.current = newPath
+          path = newPath  // 重要: ローカル変数も更新
 
           // 次の点の処理用に更新
           lastPt = point
@@ -336,3 +339,4 @@ export const useDrawing = (
     cancelDrawing
   }
 }
+
