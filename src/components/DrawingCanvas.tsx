@@ -139,100 +139,13 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     })
 
     // 再描画ロジック（pathsが変わった時）
-    // ただし、isDrawingExternal中は描画中の線と競合するのでスキップ
+    // DEBUG: 二重線テストのため一時的に無効化
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     useEffect(() => {
-        // DEBUG: 完全に無効化してテスト
-        return // TEMPORARY: Disable useEffect completely for testing
-
-        const canvas = canvasRef.current
-        if (!canvas) return
-
-        const ctx = canvas.getContext('2d')
-        if (!ctx) return
-
-        // 常にクリアして再描画
-        ctx.clearRect(0, 0, canvas.width, canvas.height)
-        ctx.lineCap = 'round'
-        ctx.lineJoin = 'round'
-
-        // ラッソストロークのインデックス（別途破線で描画するためスキップ）
-        const lassoIdx = selectionState?.lassoStrokeIndex ?? -1
-
-        paths.forEach((path, index) => {
-            // ラッソストロークはここではスキップ（後で破線として描画）
-            if (index === lassoIdx) return
-
-            ctx.beginPath()
-            // 選択されたパスは青でハイライト
-            const isSelected = selectionState?.selectedIndices.includes(index)
-            ctx.strokeStyle = isSelected ? '#3498db' : path.color
-            ctx.lineWidth = path.width
-
-            if (path.points.length > 0) {
-                // DEBUG: 再描画トレースマーカー（黄色の小さなドット）
-                ctx.save()
-                ctx.fillStyle = 'yellow'
-                path.points.forEach(pt => {
-                    ctx.beginPath()
-                    ctx.arc(pt.x * canvas.width, pt.y * canvas.height, 2, 0, Math.PI * 2)
-                    ctx.fill()
-                })
-                ctx.restore()
-
-                // ベジェ曲線で滑らかに描画（useDrawingと同じロジック）
-                const pts = path.points
-                if (pts.length === 1) {
-                    // 1点の場合は点を描画
-                    ctx.beginPath()
-                    ctx.arc(pts[0].x * canvas.width, pts[0].y * canvas.height, path.width / 2, 0, Math.PI * 2)
-                    ctx.fillStyle = ctx.strokeStyle
-                    ctx.fill()
-                } else if (pts.length === 2) {
-                    // 2点の場合は直線
-                    ctx.moveTo(pts[0].x * canvas.width, pts[0].y * canvas.height)
-                    ctx.lineTo(pts[1].x * canvas.width, pts[1].y * canvas.height)
-                    ctx.stroke()
-                } else {
-                    // 3点以上：quadraticCurveToで滑らかなカーブ
-                    ctx.moveTo(pts[0].x * canvas.width, pts[0].y * canvas.height)
-
-                    for (let i = 1; i < pts.length - 1; i++) {
-                        const p1 = pts[i]
-                        const p2 = pts[i + 1]
-                        // 制御点は現在の点、終点は次の点との中間点
-                        const cpX = p1.x * canvas.width
-                        const cpY = p1.y * canvas.height
-                        const endX = (p1.x + p2.x) / 2 * canvas.width
-                        const endY = (p1.y + p2.y) / 2 * canvas.height
-                        ctx.quadraticCurveTo(cpX, cpY, endX, endY)
-                    }
-                    // 最後の点まで描画
-                    const lastPt = pts[pts.length - 1]
-                    ctx.lineTo(lastPt.x * canvas.width, lastPt.y * canvas.height)
-                    ctx.stroke()
-                }
-            }
-        })
-
-        // ラッソストロークを破線で描画（選択モード中のみ）
-        if (lassoIdx >= 0 && lassoIdx < paths.length) {
-            const lasso = paths[lassoIdx]
-            ctx.strokeStyle = 'rgba(52, 152, 219, 0.7)'
-            ctx.lineWidth = lasso.width
-            ctx.setLineDash([6, 4])
-            ctx.beginPath()
-            if (lasso.points.length > 0) {
-                ctx.moveTo(lasso.points[0].x * canvas.width, lasso.points[0].y * canvas.height)
-                lasso.points.forEach((point, idx) => {
-                    if (idx > 0) ctx.lineTo(point.x * canvas.width, point.y * canvas.height)
-                })
-                ctx.closePath()
-                ctx.stroke()
-            }
-            ctx.setLineDash([])
-        }
-
-        // バウンディングボックスは表示しない（ユーザー要望）
+        // TEMPORARY: Completely disabled for testing double-line issue
+        // This useEffect normally redraws all paths when paths array changes
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const _unused = { paths, width, height, selectionState, isDrawingExternal }
     }, [paths, width, height, selectionState, isDrawingExternal])
 
     // Canvas座標変換ヘルパー
