@@ -237,6 +237,8 @@ export const useDrawing = (
       x: p.x / canvas.width,
       y: p.y / canvas.height
     }))
+    // DEBUG: パスの継続性確認ログ
+    console.log('[drawBatch] pathLen:', path.points.length, 'newPts:', normalizedPoints.length)
 
     // 最後の既存ポイントから最初の新しいポイントまでのみ補間
     const interpolatedPoints: Array<{ x: number, y: number }> = []
