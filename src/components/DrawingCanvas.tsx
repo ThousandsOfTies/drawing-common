@@ -141,8 +141,8 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     // 再描画ロジック（pathsが変わった時）
     // ただし、isDrawingExternal中は描画中の線と競合するのでスキップ
     useEffect(() => {
-        // 描画中は再描画をスキップ（リアルタイム描画と競合するため）
-        if (isDrawingExternal) return
+        // DEBUG: 完全に無効化してテスト
+        return // TEMPORARY: Disable useEffect completely for testing
 
         const canvas = canvasRef.current
         if (!canvas) return
