@@ -139,7 +139,11 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     })
 
     // 再描画ロジック（pathsが変わった時）
+    // ただし、isDrawingExternal中は描画中の線と競合するのでスキップ
     useEffect(() => {
+        // 描画中は再描画をスキップ（リアルタイム描画と競合するため）
+        if (isDrawingExternal) return
+
         const canvas = canvasRef.current
         if (!canvas) return
 
@@ -219,7 +223,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         }
 
         // バウンディングボックスは表示しない（ユーザー要望）
-    }, [paths, width, height, selectionState])
+    }, [paths, width, height, selectionState, isDrawingExternal])
 
     // Canvas座標変換ヘルパー
     const toCanvasCoordinates = (e: React.MouseEvent | React.TouchEvent): { x: number, y: number } | null => {
