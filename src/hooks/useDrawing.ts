@@ -211,7 +211,7 @@ export const useDrawing = (
     }
 
     const ctx = ctxRef.current
-    const path = currentPathRef.current
+    let path = currentPathRef.current
 
     // 正規化座標に変換
     const normalizedPoints = points.map(p => ({
@@ -228,10 +228,8 @@ export const useDrawing = (
     const thresholdSq = threshold * threshold
 
     // 前回の最後の点（基準点）
-    let path = currentPathRef.current
     const prevPoints = path.points
     const prevPoints = path.points
-    let lastPt = prevPoints.length > 0 ? prevPoints[prevPoints.length - 1] : normalizedPoints[0]
 
     // バッチ内の各点を処理
     for (let i = 0; i < normalizedPoints.length; i++) {
