@@ -121,6 +121,14 @@ export const useDrawing = (
     const canvas = canvasRef.current
     if (!isDrawing || !currentPathRef.current || !ctxRef.current || !canvas) return
 
+    // DEBUG: 描画呼び出しのトレースマーカー（青い小さなドット）
+    ctxRef.current.save()
+    ctxRef.current.fillStyle = 'cyan'
+    ctxRef.current.beginPath()
+    ctxRef.current.arc(x, y, 3, 0, Math.PI * 2)
+    ctxRef.current.fill()
+    ctxRef.current.restore()
+
     // 正規化
     const normalizedX = x / canvas.width
     const normalizedY = y / canvas.height
@@ -213,6 +221,16 @@ export const useDrawing = (
     const ctx = ctxRef.current
     const path = currentPathRef.current
     const lastExistingPoint = path.points[path.points.length - 1]
+
+    // DEBUG: 描画呼び出しのトレースマーカー（マゼンタの小さなドット）
+    ctx.save()
+    ctx.fillStyle = 'magenta'
+    points.forEach(pt => {
+      ctx.beginPath()
+      ctx.arc(pt.x, pt.y, 2, 0, Math.PI * 2)
+      ctx.fill()
+    })
+    ctx.restore()
 
     // 正規化座標に変換
     const normalizedPoints = points.map(p => ({
