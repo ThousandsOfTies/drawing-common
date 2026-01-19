@@ -165,11 +165,38 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
             ctx.lineWidth = path.width
 
             if (path.points.length > 0) {
-                ctx.moveTo(path.points[0].x * canvas.width, path.points[0].y * canvas.height)
-                path.points.forEach((point, idx) => {
-                    if (idx > 0) ctx.lineTo(point.x * canvas.width, point.y * canvas.height)
-                })
-                ctx.stroke()
+                // ベジェ曲線で滑らかに描画（useDrawingと同じロジック）
+                const pts = path.points
+                if (pts.length === 1) {
+                    // 1点の場合は点を描画
+                    ctx.beginPath()
+                    ctx.arc(pts[0].x * canvas.width, pts[0].y * canvas.height, path.width / 2, 0, Math.PI * 2)
+                    ctx.fillStyle = ctx.strokeStyle
+                    ctx.fill()
+                } else if (pts.length === 2) {
+                    // 2点の場合は直線
+                    ctx.moveTo(pts[0].x * canvas.width, pts[0].y * canvas.height)
+                    ctx.lineTo(pts[1].x * canvas.width, pts[1].y * canvas.height)
+                    ctx.stroke()
+                } else {
+                    // 3点以上：quadraticCurveToで滑らかなカーブ
+                    ctx.moveTo(pts[0].x * canvas.width, pts[0].y * canvas.height)
+
+                    for (let i = 1; i < pts.length - 1; i++) {
+                        const p1 = pts[i]
+                        const p2 = pts[i + 1]
+                        // 制御点は現在の点、終点は次の点との中間点
+                        const cpX = p1.x * canvas.width
+                        const cpY = p1.y * canvas.height
+                        const endX = (p1.x + p2.x) / 2 * canvas.width
+                        const endY = (p1.y + p2.y) / 2 * canvas.height
+                        ctx.quadraticCurveTo(cpX, cpY, endX, endY)
+                    }
+                    // 最後の点まで描画
+                    const lastPt = pts[pts.length - 1]
+                    ctx.lineTo(lastPt.x * canvas.width, lastPt.y * canvas.height)
+                    ctx.stroke()
+                }
             }
         })
 
