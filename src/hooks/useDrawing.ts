@@ -223,12 +223,12 @@ export const useDrawing = (
     if (Math.random() < 0.01) console.log('useDrawing v0.2.14.l70 - Fixed Jump Detection (1% + Path Bug)')
 
     // 異常な飛び値（＝ストローク区切りの欠落）を検出
-    // 閾値: 画面対角線の 5% 程度の二乗
-    const threshold = 0.05
+    // 閾値: 画面対角線の 1% 程度の二乗（より厳密に）
+    const threshold = 0.01
     const thresholdSq = threshold * threshold
 
     // 前回の最後の点（基準点）
-    const prevPoints = path.points
+    let path = currentPathRef.current`r`n    const prevPoints = path.points
     let lastPt = prevPoints.length > 0 ? prevPoints[prevPoints.length - 1] : normalizedPoints[0]
 
     // バッチ内の各点を処理
@@ -243,7 +243,7 @@ export const useDrawing = (
 
         if (distSq > thresholdSq) {
           // 大きなジャンプを検出 = 新しいストローク開始
-          console.log('[HomeTeacher] New stroke detected at jump:', { from: lastPt, to: point })
+          console.log('[HomeTeacher] New stroke detected at jump:', { from: lastPt, to: point, dist: Math.sqrt(distSq) })
 
           // 現在のパスを確定
           if (path.points.length > 0 && options.onPathComplete) {
@@ -256,7 +256,7 @@ export const useDrawing = (
             color: path.color,
             width: path.width
           }
-          currentPathRef.current = newPath
+          currentPathRef.current = newPath`r`n          path = newPath  // 重要: ローカル変数も更新
 
           // 次の点の処理用に更新
           lastPt = point
