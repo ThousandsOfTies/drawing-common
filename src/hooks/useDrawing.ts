@@ -220,36 +220,36 @@ export const useDrawing = (
     }))
 
     // バージョン識別用ログ
-    if (Math.random() < 0.01) console.log('useDrawing v0.2.14.l68 - Smart Stroke Separation')
+    if (Math.random() < 0.01) console.log('useDrawing v0.2.14.l69 - LineTo + Jump Detection')
 
     // 異常な飛び値（＝ストローク区切りの欠落）を検出
     // 閾値: 画面対角線の 5% 程度の二乗
     const threshold = 0.05
     const thresholdSq = threshold * threshold
-    
+
     // 前回の最後の点（基準点）
     const prevPoints = path.points
     let lastPt = prevPoints.length > 0 ? prevPoints[prevPoints.length - 1] : normalizedPoints[0]
-    
+
     // バッチ内の各点を処理
     for (let i = 0; i < normalizedPoints.length; i++) {
       const point = normalizedPoints[i]
-      
+
       // 距離チェック（ストローク区切り検出）
       if (prevPoints.length > 0 || i > 0) {
         const dx = point.x - lastPt.x
         const dy = point.y - lastPt.y
         const distSq = dx * dx + dy * dy
-        
+
         if (distSq > thresholdSq) {
           // 大きなジャンプを検出 = 新しいストローク開始
           console.log('[HomeTeacher] New stroke detected at jump:', { from: lastPt, to: point })
-          
+
           // 現在のパスを確定
           if (path.points.length > 0 && options.onPathComplete) {
             options.onPathComplete(path)
           }
-          
+
           // 新しいパスを開始（色・幅などは継承）
           const newPath: DrawingPath = {
             points: [point],
@@ -257,14 +257,14 @@ export const useDrawing = (
             width: path.width
           }
           currentPathRef.current = newPath
-          
+
           // 次の点の処理用に更新
           lastPt = point
           continue
         }
       }
-      
-      // 通常処理: 点を追加してベジェ曲線で描画
+
+      // 通常処理: 点を追加してLineToで描画（シンプル・安定優先）
       path.points.push(point)
       const points = path.points
       const len = points.length
@@ -274,36 +274,15 @@ export const useDrawing = (
         continue
       }
 
-      // ベジェ曲線描画ロジック
-      if (len === 2) {
-        // 2点の場合は直線
-        ctx.beginPath()
-        ctx.moveTo(points[0].x * canvas.width, points[0].y * canvas.height)
-        ctx.lineTo(points[1].x * canvas.width, points[1].y * canvas.height)
-        ctx.stroke()
-      } else {
-        // 3点以上: 二次ベジェ曲線
-        const p0 = points[len - 3]
-        const p1 = points[len - 2]
-        const p2 = points[len - 1]
+      // シンプルなLineTo描画
+      const prevPt = points[len - 2]
+      const currPt = points[len - 1]
 
-        const cpX = p1.x * canvas.width
-        const cpY = p1.y * canvas.height
-        const endX = (p1.x + p2.x) / 2 * canvas.width
-        const endY = (p1.y + p2.y) / 2 * canvas.height
+      ctx.beginPath()
+      ctx.moveTo(prevPt.x * canvas.width, prevPt.y * canvas.height)
+      ctx.lineTo(currPt.x * canvas.width, currPt.y * canvas.height)
+      ctx.stroke()
 
-        ctx.beginPath()
-        if (len === 3) {
-          ctx.moveTo(p0.x * canvas.width, p0.y * canvas.height)
-        } else {
-          const prevEndX = (p0.x + p1.x) / 2 * canvas.width
-          const prevEndY = (p0.y + p1.y) / 2 * canvas.height
-          ctx.moveTo(prevEndX, prevEndY)
-        }
-        ctx.quadraticCurveTo(cpX, cpY, endX, endY)
-        ctx.stroke()
-      }
-      
       lastPt = point
     }
   }
