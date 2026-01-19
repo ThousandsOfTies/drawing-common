@@ -213,109 +213,31 @@ export const useDrawing = (
     const ctx = ctxRef.current
     const path = currentPathRef.current
 
-    // ポイントを追加しながら描画（ベジェ曲線復活 + 外れ値フィルタ実装 v2）
-    // バージョン識別用ログ
-    if (Math.random() < 0.01) console.log('useDrawing v0.2.14.l60 - Bezier + Filter')
-
-    // 異常な飛び値（バグったCoalesced Events）を除外してから処理する
-    // 閾値: 画面対角線の 5% 程度の二乗
-    const threshold = 0.05
-    const thresholdSq = threshold * threshold
-
-    // フィルタリング後のポイントリスト
-    const validNewPoints: Array<{ x: number, y: number }> = []
-
     // 正規化座標に変換
     const normalizedPoints = points.map(p => ({
       x: p.x / canvas.width,
       y: p.y / canvas.height
     }))
 
-    // 比較用の基準点（最初はバッチ前の最後の点、なければバッチの始点）
-    const prevPoints = path.points
-    let lastValidPt = (prevPoints.length > 0) ? prevPoints[prevPoints.length - 1] : normalizedPoints[0]
+    // バージョン識別用ログ (Strict Option 2)
+    if (Math.random() < 0.01) console.log('useDrawing v0.2.14.l64 - Strict Option 2 (No Connect)')
 
-    // バッチ内の点を検証
+    // ユーザー指示「2番だけにしてください」に従い、
+    // 1. ベジェ曲線復活 -> なし（LineTo）
+    // 2. バッチ間の接続廃止 -> あり（moveToなし）
+    // 3. フィルタ -> なし
+
+    ctx.beginPath()
+
+    // 前の点への moveTo を行わない (バッチ間を接続しない)
+    // 今回のバッチの点だけで線を描く
+
     for (const point of normalizedPoints) {
-      const dx = point.x - lastValidPt.x
-      const dy = point.y - lastValidPt.y
-      const distSq = dx * dx + dy * dy
-
-      if (distSq > thresholdSq) {
-        // 異常なジャンプを検出してスキップ
-        // console.warn('Skipping outlier point', point)
-        continue
-      }
-
-      validNewPoints.push(point)
-      lastValidPt = point
-    }
-
-    if (validNewPoints.length === 0) return
-
-    // 補間処理（lastExistingPointがあれば）
-    // 単純化のため、ここでは補間をスキップして直接 validNewPoints を使うか検討したが、
-    // 滑らかさを優先して補間ロジックを通すべき。
-    // しかし、上記の validNewPoints は normalizedPoints の一部なので、補間はこれを使って再計算する。
-
-    const interpolatedPoints: Array<{ x: number, y: number }> = []
-    // 補間ロジック再開 (ただし validNewPoints[0] に対して)
-    const lastExisting = path.points[path.points.length - 1]
-    if (lastExisting && validNewPoints.length > 0) {
-      const firstNew = validNewPoints[0]
-      const dx = firstNew.x - lastExisting.x
-      const dy = firstNew.y - lastExisting.y
-      const dist = Math.sqrt(dx * dx + dy * dy)
-      const interpThreshold = 5 / Math.min(canvas.width, canvas.height) // 5px
-
-      if (dist > interpThreshold) {
-        const steps = Math.min(10, Math.floor(dist / (interpThreshold / 2)))
-        for (let i = 1; i < steps; i++) {
-          const t = i / steps
-          interpolatedPoints.push({
-            x: lastExisting.x + dx * t,
-            y: lastExisting.y + dy * t
-          })
-        }
-      }
-    }
-
-    const pointsToDraw = [...interpolatedPoints, ...validNewPoints]
-
-    for (const point of pointsToDraw) {
       path.points.push(point)
-      const points = path.points
-      const len = points.length
-
-      if (len < 2) continue
-
-      if (len < 3) {
-        ctx.beginPath()
-        ctx.moveTo(points[0].x * canvas.width, points[0].y * canvas.height)
-        ctx.lineTo(points[1].x * canvas.width, points[1].y * canvas.height)
-        ctx.stroke()
-      } else {
-        const p0 = points[len - 3]
-        const p1 = points[len - 2]
-        const p2 = points[len - 1]
-
-        const cpX = p1.x * canvas.width
-        const cpY = p1.y * canvas.height
-        const endX = (p1.x + p2.x) / 2 * canvas.width
-        const endY = (p1.y + p2.y) / 2 * canvas.height
-
-        ctx.beginPath()
-        if (len === 3) {
-          ctx.moveTo(p0.x * canvas.width, p0.y * canvas.height)
-        } else {
-          const prevEndX = (p0.x + p1.x) / 2 * canvas.width
-          const prevEndY = (p0.y + p1.y) / 2 * canvas.height
-          ctx.moveTo(prevEndX, prevEndY)
-        }
-        ctx.quadraticCurveTo(cpX, cpY, endX, endY)
-        ctx.stroke()
-      }
+      ctx.lineTo(point.x * canvas.width, point.y * canvas.height)
     }
+
+    ctx.stroke()
   }
 
   const stopDrawing = () => {
