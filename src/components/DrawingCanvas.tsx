@@ -85,6 +85,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     const isTouchActiveRef = useRef(false)
 
     // useDrawing hook (display-onlyモードでは無効化)
+    console.log('[DrawingCanvas] interactionMode:', interactionMode)
     const drawingHookResult = interactionMode === 'full' ? useDrawing(canvasRef, {
         width: size,
         color,
