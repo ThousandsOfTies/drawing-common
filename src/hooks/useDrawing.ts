@@ -254,9 +254,7 @@ export const useDrawing = (
           const newPath: DrawingPath = {
             points: [point],
             color: path.color,
-            width: path.width,
-            isEraser: path.isEraser,
-            tool: path.tool
+            width: path.width
           }
           currentPathRef.current = newPath
           
