@@ -229,7 +229,7 @@ export const useDrawing = (
 
     // 前回の最後の点（基準点）
     const prevPoints = path.points
-    let last Pt = prevPoints.length > 0 ? prevPoints[prevPoints.length - 1] : normalizedPoints[0]
+    let lastPt = prevPoints.length > 0 ? prevPoints[prevPoints.length - 1] : normalizedPoints[0]
     const prevPoints = path.points
 
     // バッチ内の各点を処理
