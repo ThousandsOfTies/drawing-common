@@ -209,10 +209,10 @@ export const useDrawing = (
     }))
 
 
-    // **診断テスト: バッチ間の接続を無効化**
-    // バッチ内だけで線を繋ぐ
-    let lastCanvasX: number | null = null
-    let lastCanvasY: number | null = null
+    // 前回のバッチの最後のcanvas座標を Ref から直接取得（生データ使用）
+    // これにより、元のbatchPointsの座標を使用（丸め誤差ゼロ）
+    let lastCanvasX: number | null = lastCanvasCoordRef.current?.x ?? null
+    let lastCanvasY: number | null = lastCanvasCoordRef.current?.y ?? null
 
 
     // バッチ内の各点を順次処理してLineTo描画
