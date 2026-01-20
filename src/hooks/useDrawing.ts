@@ -204,6 +204,9 @@ export const useDrawing = (
    * @param points 正規化されていない座標の配列 (canvas width/height で割る前)
    */
   const drawBatch = (points: Array<{ x: number, y: number }>) => {
+    // バージョン識別用ログ
+    if (Math.random() < 0.01) console.log('useDrawing v0.2.14.l71 - Simple Sequential Connection')
+
     const canvas = canvasRef.current
 
     if (!isDrawing || !currentPathRef.current || !ctxRef.current || !canvas || points.length === 0) {
@@ -219,63 +222,17 @@ export const useDrawing = (
       y: p.y / canvas.height
     }))
 
-    // バージョン識別用ログ
-    if (Math.random() < 0.01) console.log('useDrawing v0.2.14.l70 - Fixed Jump Detection (1% + Path Bug)')
-
-    // 異常な飛び値（＝ストローク区切りの欠落）を検出
-    // 閾値: 画面対角線の 1% 程度の二乗（より厳密に）
-    const threshold = 0.01
-    const thresholdSq = threshold * threshold
-
-    // 前回の最後の点（基準点）
-    const prevPoints = path.points
-    let lastPt = prevPoints.length > 0 ? prevPoints[prevPoints.length - 1] : normalizedPoints[0]
-
-    // バッチ内の各点を処理
-    for (let i = 0; i < normalizedPoints.length; i++) {
-      const point = normalizedPoints[i]
-
-      // 距離チェック（ストローク区切り検出）
-      if (prevPoints.length > 0 || i > 0) {
-        const dx = point.x - lastPt.x
-        const dy = point.y - lastPt.y
-        const distSq = dx * dx + dy * dy
-
-        if (distSq > thresholdSq) {
-          // 大きなジャンプを検出 = 新しいストローク開始
-          console.log('[HomeTeacher] New stroke detected at jump:', { from: lastPt, to: point, dist: Math.sqrt(distSq) })
-
-          // 現在のパスを確定
-          if (path.points.length > 0 && options.onPathComplete) {
-            options.onPathComplete(path)
-          }
-
-          // 新しいパスを開始（色・幅などは継承）
-          const newPath: DrawingPath = {
-            points: [point],
-            color: path.color,
-            width: path.width
-          }
-          currentPathRef.current = newPath
-          path = newPath  // 重要: ローカル変数も更新
-
-          // 次の点の処理用に更新
-          lastPt = point
-          continue
-        }
-      }
-
-      // 通常処理: 点を追加してLineToで描画（シンプル・安定優先）
+    // バッチ内の各点を順次処理してLineTo描画
+    for (const point of normalizedPoints) {
       path.points.push(point)
       const points = path.points
       const len = points.length
 
       if (len < 2) {
-        lastPt = point
         continue
       }
 
-      // シンプルなLineTo描画
+      // シンプルなLineTo描画（前の点から現在の点へ）
       const prevPt = points[len - 2]
       const currPt = points[len - 1]
 
@@ -283,8 +240,6 @@ export const useDrawing = (
       ctx.moveTo(prevPt.x * canvas.width, prevPt.y * canvas.height)
       ctx.lineTo(currPt.x * canvas.width, currPt.y * canvas.height)
       ctx.stroke()
-
-      lastPt = point
     }
   }
 
