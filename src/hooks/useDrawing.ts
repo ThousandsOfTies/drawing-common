@@ -224,7 +224,7 @@ export const useDrawing = (
       // iPad可視ログ（最初の20点まで拡大）
       if (i < 20 && options.onLog) {
         const len = path.points.length
-        options.onLog(`[DB${i}]`, `len=${len} norm=(${prevPt.x.toFixed(3)},${prevPt.y.toFixed(3)}) M(${moveToX.toFixed(0)},${moveToY.toFixed(0)}) L(${lineToX.toFixed(0)},${lineToY.toFixed(0)})`)
+        options.onLog(`[DB${i}]`, `len=${len} cw=${canvas.width} norm=(${prevPt.x.toFixed(3)},${prevPt.y.toFixed(3)}) M(${moveToX.toFixed(0)},${moveToY.toFixed(0)}) L(${lineToX.toFixed(0)},${lineToY.toFixed(0)})`)
       }
 
       ctx.beginPath()
