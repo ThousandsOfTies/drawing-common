@@ -209,14 +209,15 @@ export const useDrawing = (
         continue
       }
 
+      // DIAGNOSTIC: Disable real-time drawing to test if this causes chord
       // シンプルなLineTo描画（前の点から現在の点へ）
-      const prevPt = path.points[path.points.length - 2]
-      const currPt = path.points[path.points.length - 1]
-
-      ctx.beginPath()
-      ctx.moveTo(prevPt.x * canvas.width, prevPt.y * canvas.height)
-      ctx.lineTo(currPt.x * canvas.width, currPt.y * canvas.height)
-      ctx.stroke()
+      // const prevPt = path.points[path.points.length - 2]
+      // const currPt = path.points[path.points.length - 1]
+      //
+      // ctx.beginPath()
+      // ctx.moveTo(prevPt.x * canvas.width, prevPt.y * canvas.height)
+      // ctx.lineTo(currPt.x * canvas.width, currPt.y * canvas.height)
+      // ctx.stroke()
     }
   }
 
