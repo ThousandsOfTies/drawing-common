@@ -225,16 +225,14 @@ export const useDrawing = (
     // バッチ内の各点を順次処理してLineTo描画
     for (const point of normalizedPoints) {
       path.points.push(point)
-      const points = path.points
-      const len = points.length
 
-      if (len < 2) {
+      if (path.points.length < 2) {
         continue
       }
 
       // シンプルなLineTo描画（前の点から現在の点へ）
-      const prevPt = points[len - 2]
-      const currPt = points[len - 1]
+      const prevPt = path.points[path.points.length - 2]
+      const currPt = path.points[path.points.length - 1]
 
       ctx.beginPath()
       ctx.moveTo(prevPt.x * canvas.width, prevPt.y * canvas.height)
