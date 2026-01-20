@@ -231,16 +231,26 @@ export const useDrawing = (
         continue
       }
 
-      // iPad可視ログ（最初の20点まで拡大）
+      // iPad可視ログ（最初の20点まで拡大）- ビジュアルマーカー付き
       if (i < 20 && options.onLog) {
         const len = path.points.length
-        options.onLog(`[DB${i}]`, `len=${len} M(${lastCanvasX.toFixed(0)},${lastCanvasY.toFixed(0)}) L(${canvasX.toFixed(0)},${canvasY.toFixed(0)})`)
+        const marker = i === 0 ? '🔴' : '⚪'
+        options.onLog(`${marker}[DB${i}]`, `len=${len} M(${lastCanvasX.toFixed(0)},${lastCanvasY.toFixed(0)}) L(${canvasX.toFixed(0)},${canvasY.toFixed(0)})`)
       }
 
       ctx.beginPath()
       ctx.moveTo(lastCanvasX, lastCanvasY)
       ctx.lineTo(canvasX, canvasY)
-      ctx.stroke()
+
+      // ビジュアルデバッグ: バッチ間接続は赤色
+      if (i === 0) {
+        const prev = ctx.strokeStyle
+        ctx.strokeStyle = 'red'
+        ctx.stroke()
+        ctx.strokeStyle = prev
+      } else {
+        ctx.stroke()
+      }
 
       // 次の線のために現在の点を保存（ローカル変数とRef両方）
       lastCanvasX = canvasX
