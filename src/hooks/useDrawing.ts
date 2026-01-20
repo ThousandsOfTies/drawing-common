@@ -224,9 +224,10 @@ export const useDrawing = (
       path.points.push(point)
 
       if (lastCanvasX === null || lastCanvasY === null) {
-        // 最初の点はmoveToのみ
+        // 最初の点: Refも更新してから次へ
         lastCanvasX = canvasX
         lastCanvasY = canvasY
+        lastCanvasCoordRef.current = { x: canvasX, y: canvasY }
         continue
       }
 
