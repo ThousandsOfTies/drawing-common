@@ -186,7 +186,7 @@ export const useDrawing = (
    */
   const drawBatch = (points: Array<{ x: number, y: number }>) => {
     // バージョン識別用ログ
-    if (Math.random() < 0.01) console.log('useDrawing v0.2.14.l71 - Simple Sequential Connection')
+    if (Math.random() < 0.01) console.log('useDrawing v0.2.14.l81 - Canvas Coord Cache Fix')
 
     const canvas = canvasRef.current
 
@@ -203,34 +203,46 @@ export const useDrawing = (
       y: p.y / canvas.height
     }))
 
+    // 前回のバッチの最後のcanvas座標をキャッシュから取得
+    // これにより正規化→非正規化の丸め誤差を回避
+    let lastCanvasX: number | null = null
+    let lastCanvasY: number | null = null
+
+    if (path.points.length >= 1) {
+      const lastNormPt = path.points[path.points.length - 1]
+      lastCanvasX = lastNormPt.x * canvas.width
+      lastCanvasY = lastNormPt.y * canvas.height
+    }
+
     // バッチ内の各点を順次処理してLineTo描画
     for (let i = 0; i < normalizedPoints.length; i++) {
       const point = normalizedPoints[i]
+      const canvasX = points[i].x  // 元のcanvas座標を使用（丸め誤差なし）
+      const canvasY = points[i].y
+
       path.points.push(point)
 
-      if (path.points.length < 2) {
+      if (lastCanvasX === null || lastCanvasY === null) {
+        // 最初の点はmoveToのみ
+        lastCanvasX = canvasX
+        lastCanvasY = canvasY
         continue
       }
-
-      // シンプルなLineTo描画（前の点から現在の点へ）
-      const prevPt = path.points[path.points.length - 2]
-      const currPt = path.points[path.points.length - 1]
-
-      const moveToX = prevPt.x * canvas.width
-      const moveToY = prevPt.y * canvas.height
-      const lineToX = currPt.x * canvas.width
-      const lineToY = currPt.y * canvas.height
 
       // iPad可視ログ（最初の20点まで拡大）
       if (i < 20 && options.onLog) {
         const len = path.points.length
-        options.onLog(`[DB${i}]`, `len=${len} cw=${canvas.width} norm=(${prevPt.x.toFixed(3)},${prevPt.y.toFixed(3)}) M(${moveToX.toFixed(0)},${moveToY.toFixed(0)}) L(${lineToX.toFixed(0)},${lineToY.toFixed(0)})`)
+        options.onLog(`[DB${i}]`, `len=${len} M(${lastCanvasX.toFixed(0)},${lastCanvasY.toFixed(0)}) L(${canvasX.toFixed(0)},${canvasY.toFixed(0)})`)
       }
 
       ctx.beginPath()
-      ctx.moveTo(moveToX, moveToY)
-      ctx.lineTo(lineToX, lineToY)
+      ctx.moveTo(lastCanvasX, lastCanvasY)
+      ctx.lineTo(canvasX, canvasY)
       ctx.stroke()
+
+      // 次の線のために現在の点を保存
+      lastCanvasX = canvasX
+      lastCanvasY = canvasY
     }
   }
 
