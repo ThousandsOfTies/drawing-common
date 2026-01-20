@@ -209,10 +209,10 @@ export const useDrawing = (
     }))
 
 
-    // 前回のバッチの最後のcanvas座標を Ref から直接取得
-    // 正規化座標からの再計算は行わない（丸め誤差を完全に回避）
-    let lastCanvasX: number | null = lastCanvasCoordRef.current?.x ?? null
-    let lastCanvasY: number | null = lastCanvasCoordRef.current?.y ?? null
+    // **診断テスト: バッチ間の接続を無効化**
+    // バッチ内だけで線を繋ぐ
+    let lastCanvasX: number | null = null
+    let lastCanvasY: number | null = null
 
 
     // バッチ内の各点を順次処理してLineTo描画
