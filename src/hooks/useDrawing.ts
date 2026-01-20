@@ -221,8 +221,8 @@ export const useDrawing = (
       const lineToX = currPt.x * canvas.width
       const lineToY = currPt.y * canvas.height
 
-      // iPad可視ログ（最初の10点のみ）
-      if (i < 10 && options.onLog) {
+      // iPad可視ログ（最初の20点まで拡大）
+      if (i < 20 && options.onLog) {
         const len = path.points.length
         options.onLog(`[DB${i}]`, `len=${len} M(${moveToX.toFixed(0)},${moveToY.toFixed(0)}) L(${lineToX.toFixed(0)},${lineToY.toFixed(0)})`)
       }
