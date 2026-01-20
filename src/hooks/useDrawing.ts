@@ -208,16 +208,12 @@ export const useDrawing = (
       y: p.y / canvas.height
     }))
 
-    // 前回のバッチの最後のcanvas座標をキャッシュから取得
-    // これにより正規化→非正規化の丸め誤差を回避
-    let lastCanvasX: number | null = null
-    let lastCanvasY: number | null = null
 
-    if (path.points.length >= 1) {
-      const lastNormPt = path.points[path.points.length - 1]
-      lastCanvasX = lastNormPt.x * canvas.width
-      lastCanvasY = lastNormPt.y * canvas.height
-    }
+    // 前回のバッチの最後のcanvas座標を Ref から直接取得
+    // 正規化座標からの再計算は行わない（丸め誤差を完全に回避）
+    let lastCanvasX: number | null = lastCanvasCoordRef.current?.x ?? null
+    let lastCanvasY: number | null = lastCanvasCoordRef.current?.y ?? null
+
 
     // バッチ内の各点を順次処理してLineTo描画
     for (let i = 0; i < normalizedPoints.length; i++) {
