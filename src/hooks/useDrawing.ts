@@ -223,7 +223,8 @@ export const useDrawing = (
 
       // iPad可視ログ（最初の10点のみ）
       if (i < 10 && options.onLog) {
-        options.onLog(`[DB${i}]`, `M(${moveToX.toFixed(0)},${moveToY.toFixed(0)}) L(${lineToX.toFixed(0)},${lineToY.toFixed(0)})`)
+        const len = path.points.length
+        options.onLog(`[DB${i}]`, `len=${len} M(${moveToX.toFixed(0)},${moveToY.toFixed(0)}) L(${lineToX.toFixed(0)},${lineToY.toFixed(0)})`)
       }
 
       ctx.beginPath()
