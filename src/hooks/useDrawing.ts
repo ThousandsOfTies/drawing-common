@@ -83,6 +83,8 @@ interface UseDrawingOptions {
   onScratchComplete?: (scratchPath: DrawingPath) => void
   // 既存パスを取得する関数（スクラッチ判定時に交差チェック用）
   getCurrentPaths?: () => DrawingPath[]
+  // デバッグ用ログコールバック（iPadでの可視化）
+  onLog?: (message: string, data?: any) => void
 }
 
 export const useDrawing = (
@@ -202,22 +204,32 @@ export const useDrawing = (
     }))
 
     // バッチ内の各点を順次処理してLineTo描画
-    for (const point of normalizedPoints) {
+    for (let i = 0; i < normalizedPoints.length; i++) {
+      const point = normalizedPoints[i]
       path.points.push(point)
 
       if (path.points.length < 2) {
         continue
       }
 
-      // DIAGNOSTIC: Disable real-time drawing to test if this causes chord
       // シンプルなLineTo描画（前の点から現在の点へ）
-      // const prevPt = path.points[path.points.length - 2]
-      // const currPt = path.points[path.points.length - 1]
-      //
-      // ctx.beginPath()
-      // ctx.moveTo(prevPt.x * canvas.width, prevPt.y * canvas.height)
-      // ctx.lineTo(currPt.x * canvas.width, currPt.y * canvas.height)
-      // ctx.stroke()
+      const prevPt = path.points[path.points.length - 2]
+      const currPt = path.points[path.points.length - 1]
+
+      const moveToX = prevPt.x * canvas.width
+      const moveToY = prevPt.y * canvas.height
+      const lineToX = currPt.x * canvas.width
+      const lineToY = currPt.y * canvas.height
+
+      // iPad可視ログ（最初の10点のみ）
+      if (i < 10 && options.onLog) {
+        options.onLog(`[DB${i}]`, `M(${moveToX.toFixed(0)},${moveToY.toFixed(0)}) L(${lineToX.toFixed(0)},${lineToY.toFixed(0)})`)
+      }
+
+      ctx.beginPath()
+      ctx.moveTo(moveToX, moveToY)
+      ctx.lineTo(lineToX, lineToY)
+      ctx.stroke()
     }
   }
 
