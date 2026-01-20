@@ -158,45 +158,24 @@ export const useDrawing = (
     // ポイントを順次追加して描画
     const ctx = ctxRef.current
 
+
     for (const point of newPoints) {
       path.points.push(point)
-      const points = path.points
-      const len = points.length
+      const len = path.points.length
 
       if (len < 2) continue
 
-      if (len < 2) continue
+      // シンプルなLineTo描画（drawBatchと同じロジック）
+      const prevPt = path.points[len - 2]
+      const currPt = path.points[len - 1]
 
-      if (len < 3) {
-        // 点が2つの場合は直線
-        ctx.beginPath()
-        ctx.moveTo(points[0].x * canvas.width, points[0].y * canvas.height)
-        ctx.lineTo(points[1].x * canvas.width, points[1].y * canvas.height)
-        ctx.stroke()
-      } else {
-        // 3点以上の場合はベジェ曲線で滑らかに
-        const p0 = points[len - 3]
-        const p1 = points[len - 2]
-        const p2 = points[len - 1]
-
-        const cpX = p1.x * canvas.width
-        const cpY = p1.y * canvas.height
-        const endX = (p1.x + p2.x) / 2 * canvas.width
-        const endY = (p1.y + p2.y) / 2 * canvas.height
-
-        ctx.beginPath()
-        if (len === 3) {
-          ctx.moveTo(p0.x * canvas.width, p0.y * canvas.height)
-        } else {
-          const prevEndX = (p0.x + p1.x) / 2 * canvas.width
-          const prevEndY = (p0.y + p1.y) / 2 * canvas.height
-          ctx.moveTo(prevEndX, prevEndY)
-        }
-        ctx.quadraticCurveTo(cpX, cpY, endX, endY)
-        ctx.stroke()
-      }
+      ctx.beginPath()
+      ctx.moveTo(prevPt.x * canvas.width, prevPt.y * canvas.height)
+      ctx.lineTo(currPt.x * canvas.width, currPt.y * canvas.height)
+      ctx.stroke()
     }
   }
+
 
   /**
    * Coalesced Events用の一括描画メソッド
