@@ -94,6 +94,8 @@ export const useDrawing = (
   const [isDrawing, setIsDrawing] = useState(false)
   const currentPathRef = useRef<DrawingPath | null>(null)
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
+  // バッチ間で最後の描画座標を保持（丸め誤差回避）
+  const lastCanvasCoordRef = useRef<{ x: number, y: number } | null>(null)
 
   const startDrawing = (x: number, y: number) => {
     const canvas = canvasRef.current
@@ -110,6 +112,9 @@ export const useDrawing = (
       color: options.color,
       width: options.width
     }
+
+    // 最初の点のcanvas座標を保存
+    lastCanvasCoordRef.current = { x, y }
 
     // contextをキャッシュし、スタイルを一度だけ設定
     ctxRef.current = canvas.getContext('2d')!
@@ -240,9 +245,10 @@ export const useDrawing = (
       ctx.lineTo(canvasX, canvasY)
       ctx.stroke()
 
-      // 次の線のために現在の点を保存
+      // 次の線のために現在の点を保存（ローカル変数とRef両方）
       lastCanvasX = canvasX
       lastCanvasY = canvasY
+      lastCanvasCoordRef.current = { x: canvasX, y: canvasY }
     }
   }
 
