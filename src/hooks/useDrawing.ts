@@ -234,7 +234,7 @@ export const useDrawing = (
       // iPad可視ログ（最初の20点まで拡大）- ビジュアルマーカー付き
       if (i < 20 && options.onLog) {
         const len = path.points.length
-        const marker = i === 0 ? '🔴' : '⚪'
+        const marker = i === 1 ? '🔵' : (i === 0 ? '⚫' : '⚪')
         options.onLog(`${marker}[DB${i}]`, `len=${len} M(${lastCanvasX.toFixed(0)},${lastCanvasY.toFixed(0)}) L(${canvasX.toFixed(0)},${canvasY.toFixed(0)})`)
       }
 
@@ -243,7 +243,9 @@ export const useDrawing = (
       ctx.lineTo(canvasX, canvasY)
 
       // ビジュアルデバッグ: バッチ間接続は青色
-      if (i === 0) {
+      // PDFPane.tsxでlastDrawnPointRefがbatchPoints[0]に追加されるため、
+      // 実際のバッチ間接続線はi=1の時（prepended point → 新しい最初の点）
+      if (i === 1) {
         const prev = ctx.strokeStyle
         ctx.strokeStyle = 'blue'
         ctx.stroke()
