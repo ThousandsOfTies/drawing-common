@@ -221,6 +221,16 @@ export const useDrawing = (
       const canvasX = points[i].x  // 元のcanvas座標を使用（丸め誤差なし）
       const canvasY = points[i].y
 
+      // CRITICAL: バッチの最初の点は、PDFPane.tsxでlastDrawnPointRefから追加された重複点
+      // これは既に前のバッチでpath.pointsに追加済みなので、再度追加すると
+      // 正規化→再計算の浮動小数点誤差でchordが発生する。スキップする。
+      if (i === 0 && lastCanvasCoordRef.current) {
+        // 重複点はスキップするが、描画の起点として使用
+        lastCanvasX = canvasX
+        lastCanvasY = canvasY
+        continue
+      }
+
       path.points.push(point)
 
       if (lastCanvasX === null || lastCanvasY === null) {
