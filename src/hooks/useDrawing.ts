@@ -198,6 +198,16 @@ export const useDrawing = (
       return
     }
 
+    // 重複バッチ検出: 前回最終点と今回最終点が同じなら二度呼びと判断してスキップ
+    // （イベントシステムの二度呼びによる意図しない描画を防ぐ）
+    if (lastCanvasCoordRef.current && points.length > 0) {
+      const lastPoint = points[points.length - 1]
+      if (lastPoint.x === lastCanvasCoordRef.current.x &&
+        lastPoint.y === lastCanvasCoordRef.current.y) {
+        return  // 重複バッチをスキップ
+      }
+    }
+
     // 正規化座標に変換して path.points に追加
     points.forEach(p => {
       path.points.push({
