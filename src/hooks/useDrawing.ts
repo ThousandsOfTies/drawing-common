@@ -267,6 +267,30 @@ export const useDrawing = (
       ctx.moveTo(lastCanvasX, lastCanvasY)
       ctx.lineTo(canvasX, canvasY)
 
+      // ビジュアルデバッグ: i=1の接続線に矢印を追加（向きを確認）
+      if (i === 1) {
+        // 矢印の描画（終点に三角形）
+        const angle = Math.atan2(canvasY - lastCanvasY, canvasX - lastCanvasX)
+        const arrowLength = 15
+        const arrowWidth = 10
+
+        ctx.save()
+        ctx.fillStyle = 'red'
+        ctx.beginPath()
+        ctx.moveTo(canvasX, canvasY)
+        ctx.lineTo(
+          canvasX - arrowLength * Math.cos(angle) - arrowWidth * Math.sin(angle),
+          canvasY - arrowLength * Math.sin(angle) + arrowWidth * Math.cos(angle)
+        )
+        ctx.lineTo(
+          canvasX - arrowLength * Math.cos(angle) + arrowWidth * Math.sin(angle),
+          canvasY - arrowLength * Math.sin(angle) - arrowWidth * Math.cos(angle)
+        )
+        ctx.closePath()
+        ctx.fill()
+        ctx.restore()
+      }
+
       // ビジュアルデバッグ: バッチ間接続は青色 (TEMPORARILY DISABLED)
       // PDFPane.tsxでlastDrawnPointRefがbatchPoints[0]に追加されるため、
       // 実際のバッチ間接続線はi=1の時（prepended point → 新しい最初の点）
