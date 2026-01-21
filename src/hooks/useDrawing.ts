@@ -193,6 +193,11 @@ export const useDrawing = (
     // バージョン識別用ログ
     if (Math.random() < 0.01) console.log('useDrawing v0.2.14.l81 - Canvas Coord Cache Fix')
 
+    // デバッグ: バッチ呼び出しカウンター
+    if (options.onLog) {
+      options.onLog('[drawBatch]', `CALLED pts=${points.length}`)
+    }
+
     const canvas = canvasRef.current
 
     if (!isDrawing || !currentPathRef.current || !ctxRef.current || !canvas || points.length === 0) {
@@ -250,12 +255,13 @@ export const useDrawing = (
         if (i === 0 && lastCanvasCoordRef.current) {
           const dx = Math.abs(canvasX - lastCanvasCoordRef.current.x)
           const dy = Math.abs(canvasY - lastCanvasCoordRef.current.y)
-          options.onLog(`${marker}[DB${i}]SKIP`, `diff=(${dx.toFixed(1)},${dy.toFixed(1)}) pt=(${canvasX.toFixed(0)},${canvasY.toFixed(0)})`)
+          options.onLog(`${marker}[DB${i}]SKIP`, `diff=(${dx.toFixed(1)},${dy.toFixed(1)}) pt=(${canvasX.toFixed(0)},${canvasY.toFixed(0)}) ref=(${lastCanvasCoordRef.current.x.toFixed(0)},${lastCanvasCoordRef.current.y.toFixed(0)})`)
         }
         // i=1: バッチ間接続（chord疑惑）の詳細
         else if (i === 1) {
           const dist = Math.sqrt(Math.pow(canvasX - lastCanvasX, 2) + Math.pow(canvasY - lastCanvasY, 2))
-          options.onLog(`${marker}[DB${i}]CONN`, `dist=${dist.toFixed(0)} M(${lastCanvasX.toFixed(0)},${lastCanvasY.toFixed(0)}) L(${canvasX.toFixed(0)},${canvasY.toFixed(0)})`)
+          const refInfo = lastCanvasCoordRef.current ? `ref=(${lastCanvasCoordRef.current.x.toFixed(0)},${lastCanvasCoordRef.current.y.toFixed(0)})` : 'ref=null'
+          options.onLog(`${marker}[DB${i}]CONN`, `dist=${dist.toFixed(0)} M(${lastCanvasX.toFixed(0)},${lastCanvasY.toFixed(0)}) L(${canvasX.toFixed(0)},${canvasY.toFixed(0)}) ${refInfo}`)
         }
         // その他
         else if (i > 1) {
