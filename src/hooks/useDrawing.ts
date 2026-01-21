@@ -273,6 +273,9 @@ export const useDrawing = (
       ctx.moveTo(lastCanvasX, lastCanvasY)
       ctx.lineTo(canvasX, canvasY)
 
+      // CRITICAL: Stroke the line BEFORE drawing arrow, otherwise beginPath() in arrow will clear it
+      ctx.stroke()
+
       // ビジュアルデバッグ: i=1の接続線に矢印を追加（向きを確認）
       if (i === 1) {
         // 矢印の描画（終点に三角形）
@@ -308,7 +311,7 @@ export const useDrawing = (
       // } else {
       //   ctx.stroke()
       // }
-      ctx.stroke()
+      // ctx.stroke()  // ← REMOVED: already stroked above
 
       // 次の線のために現在の点を保存（ローカル変数とRef両方）
       lastCanvasX = canvasX
