@@ -242,10 +242,10 @@ export const useDrawing = (
       ctx.moveTo(lastCanvasX, lastCanvasY)
       ctx.lineTo(canvasX, canvasY)
 
-      // ビジュアルデバッグ: バッチ間接続は赤色
+      // ビジュアルデバッグ: バッチ間接続は青色
       if (i === 0) {
         const prev = ctx.strokeStyle
-        ctx.strokeStyle = 'red'
+        ctx.strokeStyle = 'blue'
         ctx.stroke()
         ctx.strokeStyle = prev
       } else {
