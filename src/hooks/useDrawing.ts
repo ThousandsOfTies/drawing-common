@@ -265,7 +265,8 @@ export const useDrawing = (
           const dist = Math.sqrt(Math.pow(canvasX - lastCanvasX, 2) + Math.pow(canvasY - lastCanvasY, 2))
           const refInfo = lastCanvasCoordRef.current ? `ref=(${lastCanvasCoordRef.current.x.toFixed(0)},${lastCanvasCoordRef.current.y.toFixed(0)})` : 'ref=null'
           const bp0 = `bp0=(${points[0].x.toFixed(0)},${points[0].y.toFixed(0)})`
-          options.onLog(`${marker}[DB${i}]CONN`, `dist=${dist.toFixed(0)} M(${lastCanvasX.toFixed(0)},${lastCanvasY.toFixed(0)}) L(${canvasX.toFixed(0)},${canvasY.toFixed(0)}) ${refInfo} ${bp0}`)
+          const bpLast = `bpLast=(${points[points.length - 1].x.toFixed(0)},${points[points.length - 1].y.toFixed(0)})`
+          options.onLog(`${marker}[DB${i}]CONN`, `dist=${dist.toFixed(0)} M(${lastCanvasX.toFixed(0)},${lastCanvasY.toFixed(0)}) L(${canvasX.toFixed(0)},${canvasY.toFixed(0)}) ${refInfo} ${bp0} ${bpLast}`)
         }
         // その他
         else if (i > 1) {
