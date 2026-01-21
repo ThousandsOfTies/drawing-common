@@ -226,6 +226,11 @@ export const useDrawing = (
       const canvasX = points[i].x  // 元のcanvas座標を使用（丸め誤差なし）
       const canvasY = points[i].y
 
+      // デバッグ: i=0スキップの実行を追跡
+      if (i === 0 && options.onLog) {
+        options.onLog('[i=0]BEFORE', `lastCanvasX=${lastCanvasX} canvasX=${canvasX.toFixed(0)} hasRef=${!!lastCanvasCoordRef.current}`)
+      }
+
       // CRITICAL: バッチの最初の点は、PDFPane.tsxでlastDrawnPointRefから追加された重複点
       // これは既に前のバッチでpath.pointsに追加済みなので、再度追加すると
       // 正規化→再計算の浮動小数点誤差でchordが発生する。スキップする。
@@ -236,7 +241,15 @@ export const useDrawing = (
         // CRITICAL: Must update ref here to keep it synchronized with lastCanvasX/Y
         // Otherwise M(lastCanvasX,Y) != ref in logs, causing desynchronization
         lastCanvasCoordRef.current = { x: canvasX, y: canvasY }
+
+        if (options.onLog) {
+          options.onLog('[i=0]SKIPPED', `lastCanvasX=${lastCanvasX.toFixed(0)} updated`)
+        }
         continue
+      }
+
+      if (i === 0 && options.onLog) {
+        options.onLog('[i=0]NOT-SKIP', `lastCanvasX=${lastCanvasX} proceeding to normal flow`)
       }
 
       path.points.push(point)
