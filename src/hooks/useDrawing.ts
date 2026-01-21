@@ -252,17 +252,18 @@ export const useDrawing = (
       ctx.moveTo(lastCanvasX, lastCanvasY)
       ctx.lineTo(canvasX, canvasY)
 
-      // ビジュアルデバッグ: バッチ間接続は青色
+      // ビジュアルデバッグ: バッチ間接続は青色 (TEMPORARILY DISABLED)
       // PDFPane.tsxでlastDrawnPointRefがbatchPoints[0]に追加されるため、
       // 実際のバッチ間接続線はi=1の時（prepended point → 新しい最初の点）
-      if (i === 1) {
-        const prev = ctx.strokeStyle
-        ctx.strokeStyle = 'blue'
-        ctx.stroke()
-        ctx.strokeStyle = prev
-      } else {
-        ctx.stroke()
-      }
+      // if (i === 1) {
+      //   const prev = ctx.strokeStyle
+      //   ctx.strokeStyle = 'blue'
+      //   ctx.stroke()
+      //   ctx.strokeStyle = prev
+      // } else {
+      //   ctx.stroke()
+      // }
+      ctx.stroke()
 
       // 次の線のために現在の点を保存（ローカル変数とRef両方）
       lastCanvasX = canvasX
