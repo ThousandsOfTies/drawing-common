@@ -186,155 +186,49 @@ export const useDrawing = (
 
   /**
    * Coalesced Events用の一括描画メソッド
-   * 複数のポイントを受け取り、補間の重複を避けながら一度に描画
+   * シンプルな順次描画: 前回の最後の点 → 新しい点たちを順番に接続
    * @param points 正規化されていない座標の配列 (canvas width/height で割る前)
    */
   const drawBatch = (points: Array<{ x: number, y: number }>) => {
-    // バージョン識別用ログ
-    if (Math.random() < 0.01) console.log('useDrawing v0.2.14.l81 - Canvas Coord Cache Fix')
-
-    // デバッグ: バッチ呼び出しカウンター
-    if (options.onLog) {
-      options.onLog('[drawBatch]', `CALLED pts=${points.length}`)
-    }
-
     const canvas = canvasRef.current
+    const ctx = ctxRef.current
+    const path = currentPathRef.current
 
-    if (!isDrawing || !currentPathRef.current || !ctxRef.current || !canvas || points.length === 0) {
+    if (!isDrawing || !path || !ctx || !canvas || points.length === 0) {
       return
     }
 
-    const ctx = ctxRef.current
-    let path = currentPathRef.current
+    // 正規化座標に変換して path.points に追加
+    points.forEach(p => {
+      path.points.push({
+        x: p.x / canvas.width,
+        y: p.y / canvas.height
+      })
+    })
 
-    // 正規化座標に変換
-    const normalizedPoints = points.map(p => ({
-      x: p.x / canvas.width,
-      y: p.y / canvas.height
-    }))
+    // 描画用のローカル配列を構築
+    // 前回の最後の点があれば最初に追加（バッチ間接続のため）
+    const localPoints: Array<{ x: number, y: number }> = []
+    if (lastCanvasCoordRef.current) {
+      localPoints.push(lastCanvasCoordRef.current)
+    }
+    localPoints.push(...points)
 
-
-    // 前回のバッチの最後のcanvas座標を Ref から直接取得（生データ使用）
-    // これにより、元のbatchPointsの座標を使用（丸め誤差ゼロ）
-    let lastCanvasX: number | null = lastCanvasCoordRef.current?.x ?? null
-    let lastCanvasY: number | null = lastCanvasCoordRef.current?.y ?? null
-
-
-    // バッチ内の各点を順次処理してLineTo描画
-    for (let i = 0; i < normalizedPoints.length; i++) {
-      const point = normalizedPoints[i]
-      const canvasX = points[i].x  // 元のcanvas座標を使用（丸め誤差なし）
-      const canvasY = points[i].y
-
-      // デバッグ: i=0スキップの実行を追跡
-      if (i === 0 && options.onLog) {
-        options.onLog('[i=0]BEFORE', `lastCanvasX=${lastCanvasX} canvasX=${canvasX.toFixed(0)} hasRef=${!!lastCanvasCoordRef.current}`)
-      }
-
-      // CRITICAL: バッチの最初の点は、PDFPane.tsxでlastDrawnPointRefから追加された重複点
-      // これは既に前のバッチでpath.pointsに追加済みなので、再度追加すると
-      // 正規化→再計算の浮動小数点誤差でchordが発生する。スキップする。
-      if (i === 0 && lastCanvasCoordRef.current) {
-        // 重複点はスキップするが、描画の起点として使用
-        lastCanvasX = canvasX
-        lastCanvasY = canvasY
-        // CRITICAL: Must update ref here to keep it synchronized with lastCanvasX/Y
-        // Otherwise M(lastCanvasX,Y) != ref in logs, causing desynchronization
-        lastCanvasCoordRef.current = { x: canvasX, y: canvasY }
-
-        if (options.onLog) {
-          options.onLog('[i=0]SKIPPED', `lastCanvasX=${lastCanvasX.toFixed(0)} updated`)
-        }
-        continue
-      }
-
-      if (i === 0 && options.onLog) {
-        options.onLog('[i=0]NOT-SKIP', `lastCanvasX=${lastCanvasX} proceeding to normal flow`)
-      }
-
-      path.points.push(point)
-
-      if (lastCanvasX === null || lastCanvasY === null) {
-        // 最初の点: Refも更新してから次へ
-        lastCanvasX = canvasX
-        lastCanvasY = canvasY
-        lastCanvasCoordRef.current = { x: canvasX, y: canvasY }
-        continue
-      }
-
-      // iPad可視ログ（最初の20点まで拡大）- ビジュアルマーカー付き
-      if (i < 20 && options.onLog) {
-        const len = path.points.length
-        const marker = i === 1 ? '🔵' : (i === 0 ? '⚫' : '⚪')
-
-        // i=0: スキップされた重複点の詳細
-        if (i === 0 && lastCanvasCoordRef.current) {
-          const dx = Math.abs(canvasX - lastCanvasCoordRef.current.x)
-          const dy = Math.abs(canvasY - lastCanvasCoordRef.current.y)
-          options.onLog(`${marker}[DB${i}]SKIP`, `diff=(${dx.toFixed(1)},${dy.toFixed(1)}) pt=(${canvasX.toFixed(0)},${canvasY.toFixed(0)}) ref=(${lastCanvasCoordRef.current.x.toFixed(0)},${lastCanvasCoordRef.current.y.toFixed(0)})`)
-        }
-        // i=1: バッチ間接続（chord疑惑）の詳細
-        else if (i === 1) {
-          const dist = Math.sqrt(Math.pow(canvasX - lastCanvasX, 2) + Math.pow(canvasY - lastCanvasY, 2))
-          const refInfo = lastCanvasCoordRef.current ? `ref=(${lastCanvasCoordRef.current.x.toFixed(0)},${lastCanvasCoordRef.current.y.toFixed(0)})` : 'ref=null'
-          const bp0 = `bp0=(${points[0].x.toFixed(0)},${points[0].y.toFixed(0)})`
-          const bpLast = `bpLast=(${points[points.length - 1].x.toFixed(0)},${points[points.length - 1].y.toFixed(0)})`
-          options.onLog(`${marker}[DB${i}]CONN`, `dist=${dist.toFixed(0)} M(${lastCanvasX.toFixed(0)},${lastCanvasY.toFixed(0)}) L(${canvasX.toFixed(0)},${canvasY.toFixed(0)}) ${refInfo} ${bp0} ${bpLast}`)
-        }
-        // その他
-        else if (i > 1) {
-          options.onLog(`${marker}[DB${i}]`, `len=${len} M(${lastCanvasX.toFixed(0)},${lastCanvasY.toFixed(0)}) L(${canvasX.toFixed(0)},${canvasY.toFixed(0)})`)
-        }
-      }
-
+    // i=1 から開始して i-1 → i を順次接続
+    // （i=0 は前回の最後の点なので、i=1 が最初の新しい点）
+    for (let i = 1; i < localPoints.length; i++) {
       ctx.beginPath()
-      ctx.moveTo(lastCanvasX, lastCanvasY)
-      ctx.lineTo(canvasX, canvasY)
-
-      // CRITICAL: Stroke the line BEFORE drawing arrow, otherwise beginPath() in arrow will clear it
+      ctx.moveTo(localPoints[i - 1].x, localPoints[i - 1].y)
+      ctx.lineTo(localPoints[i].x, localPoints[i].y)
       ctx.stroke()
+    }
 
-      // ビジュアルデバッグ: i=1の接続線に矢印を追加（向きを確認）
-      if (i === 1) {
-        // 矢印の描画（終点に三角形）
-        const angle = Math.atan2(canvasY - lastCanvasY, canvasX - lastCanvasX)
-        const arrowLength = 15
-        const arrowWidth = 10
-
-        ctx.save()
-        ctx.fillStyle = 'red'
-        ctx.beginPath()
-        ctx.moveTo(canvasX, canvasY)
-        ctx.lineTo(
-          canvasX - arrowLength * Math.cos(angle) - arrowWidth * Math.sin(angle),
-          canvasY - arrowLength * Math.sin(angle) + arrowWidth * Math.cos(angle)
-        )
-        ctx.lineTo(
-          canvasX - arrowLength * Math.cos(angle) + arrowWidth * Math.sin(angle),
-          canvasY - arrowLength * Math.sin(angle) - arrowWidth * Math.cos(angle)
-        )
-        ctx.closePath()
-        ctx.fill()
-        ctx.restore()
+    // 最後の点を保存（次のバッチとの接続用）
+    if (points.length > 0) {
+      lastCanvasCoordRef.current = {
+        x: points[points.length - 1].x,
+        y: points[points.length - 1].y
       }
-
-      // ビジュアルデバッグ: バッチ間接続は青色 (TEMPORARILY DISABLED)
-      // PDFPane.tsxでlastDrawnPointRefがbatchPoints[0]に追加されるため、
-      // 実際のバッチ間接続線はi=1の時（prepended point → 新しい最初の点）
-      // if (i === 1) {
-      //   const prev = ctx.strokeStyle
-      //   ctx.strokeStyle = 'blue'
-      //   ctx.stroke()
-      //   ctx.strokeStyle = prev
-      // } else {
-      //   ctx.stroke()
-      // }
-      // ctx.stroke()  // ← REMOVED: already stroked above
-
-      // 次の線のために現在の点を保存（ローカル変数とRef両方）
-      lastCanvasX = canvasX
-      lastCanvasY = canvasY
-      lastCanvasCoordRef.current = { x: canvasX, y: canvasY }
     }
   }
 
