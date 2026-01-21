@@ -245,7 +245,22 @@ export const useDrawing = (
       if (i < 20 && options.onLog) {
         const len = path.points.length
         const marker = i === 1 ? '🔵' : (i === 0 ? '⚫' : '⚪')
-        options.onLog(`${marker}[DB${i}]`, `len=${len} M(${lastCanvasX.toFixed(0)},${lastCanvasY.toFixed(0)}) L(${canvasX.toFixed(0)},${canvasY.toFixed(0)})`)
+
+        // i=0: スキップされた重複点の詳細
+        if (i === 0 && lastCanvasCoordRef.current) {
+          const dx = Math.abs(canvasX - lastCanvasCoordRef.current.x)
+          const dy = Math.abs(canvasY - lastCanvasCoordRef.current.y)
+          options.onLog(`${marker}[DB${i}]SKIP`, `diff=(${dx.toFixed(1)},${dy.toFixed(1)}) pt=(${canvasX.toFixed(0)},${canvasY.toFixed(0)})`)
+        }
+        // i=1: バッチ間接続（chord疑惑）の詳細
+        else if (i === 1) {
+          const dist = Math.sqrt(Math.pow(canvasX - lastCanvasX, 2) + Math.pow(canvasY - lastCanvasY, 2))
+          options.onLog(`${marker}[DB${i}]CONN`, `dist=${dist.toFixed(0)} M(${lastCanvasX.toFixed(0)},${lastCanvasY.toFixed(0)}) L(${canvasX.toFixed(0)},${canvasY.toFixed(0)})`)
+        }
+        // その他
+        else if (i > 1) {
+          options.onLog(`${marker}[DB${i}]`, `len=${len} M(${lastCanvasX.toFixed(0)},${lastCanvasY.toFixed(0)}) L(${canvasX.toFixed(0)},${canvasY.toFixed(0)})`)
+        }
       }
 
       ctx.beginPath()
