@@ -258,6 +258,7 @@ export const useDrawing = (
 
       currentPathRef.current = null
       ctxRef.current = null
+      lastCanvasCoordRef.current = null  // CRITICAL: Reset for next stroke
       setIsDrawing(false)
     }
   }
@@ -269,6 +270,7 @@ export const useDrawing = (
   const cancelDrawing = () => {
     currentPathRef.current = null
     ctxRef.current = null
+    lastCanvasCoordRef.current = null  // CRITICAL: Reset for next stroke
     setIsDrawing(false)
   }
 
