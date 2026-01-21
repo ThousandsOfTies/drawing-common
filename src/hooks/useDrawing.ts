@@ -233,6 +233,9 @@ export const useDrawing = (
         // 重複点はスキップするが、描画の起点として使用
         lastCanvasX = canvasX
         lastCanvasY = canvasY
+        // CRITICAL: Must update ref here to keep it synchronized with lastCanvasX/Y
+        // Otherwise M(lastCanvasX,Y) != ref in logs, causing desynchronization
+        lastCanvasCoordRef.current = { x: canvasX, y: canvasY }
         continue
       }
 
