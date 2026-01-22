@@ -587,9 +587,40 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
             return
         }
 
-        if (isDrawing) {
-            const coords = toCanvasCoordinates(e)
-            if (coords) hookContinueDrawing(coords.x, coords.y)
+        if (isDrawing && isCurrentlyDrawing) {
+            const canvas = canvasRef.current
+            if (!canvas) return
+
+            const rect = canvas.getBoundingClientRect()
+
+            // Coalesced Events の取得（Apple Pencil の追従性向上）
+            let events: PointerEvent[] = []
+            if (typeof e.nativeEvent.getCoalescedEvents === 'function') {
+                events = e.nativeEvent.getCoalescedEvents()
+            } else {
+                events = [e.nativeEvent]
+            }
+
+            // すべての Coalesced Events から座標を抽出
+            const batchPoints: Array<{ x: number, y: number }> = []
+
+            for (const ev of events) {
+                // Canvas座標に変換
+                const scaleX = canvas.width / rect.width
+                const scaleY = canvas.height / rect.height
+                const x = (ev.clientX - rect.left) * scaleX
+                const y = (ev.clientY - rect.top) * scaleY
+                batchPoints.push({ x, y })
+            }
+
+            // Coalesced Events を一括処理
+            if (batchPoints.length > 0 && 'drawBatch' in drawingHookResult) {
+                drawingHookResult.drawBatch(batchPoints)
+            } else if (batchPoints.length > 0) {
+                // drawBatchがない場合はフォールバック
+                const coords = toCanvasCoordinates(e)
+                if (coords) hookContinueDrawing(coords.x, coords.y)
+            }
         } else if (isErasing) {
             handleEraserMove(e)
         }
