@@ -223,15 +223,45 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         // バウンディングボックスは表示しない（ユーザー要望）
     }, [paths, width, height, selectionState, isDrawingExternal])
 
+    // タッチがスタイラスかどうか判定（指のみを弾くため）
+    const isStylusTouch = (touch: React.Touch): boolean => {
+        // @ts-ignore: touchTypeは標準プロパティだがTypeScript定義に含まれない場合がある
+        return touch.touchType === 'stylus'
+    }
+
+    // タッチリストからスタイラスタッチを見つける
+    const findStylusTouch = (touches: React.TouchList): React.Touch | null => {
+        for (let i = 0; i < touches.length; i++) {
+            if (isStylusTouch(touches[i])) {
+                return touches[i]
+            }
+        }
+        return null
+    }
+
     // Canvas座標変換ヘルパー
-    const toCanvasCoordinates = (e: React.MouseEvent | React.TouchEvent): { x: number, y: number } | null => {
+    const toCanvasCoordinates = (e: React.MouseEvent | React.TouchEvent, specificTouch?: React.Touch | null): { x: number, y: number } | null => {
         const canvas = canvasRef.current
         if (!canvas) return null
 
         const rect = canvas.getBoundingClientRect()
-        // タッチイベントの場合は最初のタッチポイントを使用
-        const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX
-        const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY
+
+        // 特定のタッチが指定されている場合はそれを使用
+        let clientX: number
+        let clientY: number
+
+        if (specificTouch) {
+            clientX = specificTouch.clientX
+            clientY = specificTouch.clientY
+        } else if ('touches' in e && e.touches.length > 0) {
+            // タッチイベントの場合は最初のタッチポイントを使用
+            clientX = e.touches[0].clientX
+            clientY = e.touches[0].clientY
+        } else {
+            // マウスイベント
+            clientX = (e as React.MouseEvent).clientX
+            clientY = (e as React.MouseEvent).clientY
+        }
 
         // 視覚的なサイズと内部バッファサイズの比率を計算
         // (高解像度ディスプレイやRENDER_SCALEによる拡大縮小を補正)
@@ -242,12 +272,6 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
             x: (clientX - rect.left) * scaleX,
             y: (clientY - rect.top) * scaleY
         }
-    }
-
-    // タッチがスタイラスかどうか判定（指のみを弾くため）
-    const isStylusTouch = (touch: React.Touch): boolean => {
-        // @ts-ignore: touchTypeは標準プロパティだがTypeScript定義に含まれない場合がある
-        return touch.touchType === 'stylus'
     }
 
     // ペン用ハンドラ
@@ -389,12 +413,16 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         }
 
         // パームリジェクション: stylusOnlyかつ指の場合は無視
-        // ただし消しゴムモードの場合は指でも操作可能としたい場合はここを調整
+        // マルチタッチ対応：複数のタッチからスタイラスを探す
+        let targetTouch: React.Touch | null = null
         if (stylusOnly && isDrawing && e.touches.length > 0) {
-            const touch = e.touches[0]
-            if (!isStylusTouch(touch)) {
-                return // 描画しない
+            targetTouch = findStylusTouch(e.touches)
+            if (!targetTouch) {
+                return // スタイラスが見つからない場合は無視
             }
+        } else if (e.touches.length > 0) {
+            // stylusOnlyが無効な場合は最初のタッチを使用
+            targetTouch = e.touches[0]
         }
 
         // 選択中の場合
@@ -414,17 +442,24 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
             return
         }
 
-        if (isDrawing) handlePenDown(e)
-        else if (isErasing) handleEraserDown(e)
+        if (isDrawing) {
+            const coords = toCanvasCoordinates(e, targetTouch)
+            if (coords) hookStartDrawing(coords.x, coords.y)
+        } else if (isErasing) {
+            handleEraserDown(e)
+        }
     }
 
     const handleTouchMove = (e: React.TouchEvent) => {
-        // パームリジェクション
+        // パームリジェクション: マルチタッチ対応：複数のタッチからスタイラスを探す
+        let targetTouch: React.Touch | null = null
         if (stylusOnly && isDrawing && e.touches.length > 0) {
-            const touch = e.touches[0]
-            if (!isStylusTouch(touch)) {
-                return
+            targetTouch = findStylusTouch(e.touches)
+            if (!targetTouch) {
+                return // スタイラスが見つからない場合は無視
             }
+        } else if (e.touches.length > 0) {
+            targetTouch = e.touches[0]
         }
 
         // 選択をドラッグ中
@@ -434,8 +469,12 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
             return
         }
 
-        if (isDrawing) handlePenMove(e)
-        else if (isErasing) handleEraserMove(e)
+        if (isDrawing) {
+            const coords = toCanvasCoordinates(e, targetTouch)
+            if (coords) hookContinueDrawing(coords.x, coords.y)
+        } else if (isErasing) {
+            handleEraserMove(e)
+        }
     }
 
     const handleTouchEnd = (e: React.TouchEvent) => {
