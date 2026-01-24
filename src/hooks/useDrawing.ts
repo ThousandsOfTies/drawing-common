@@ -83,8 +83,7 @@ interface UseDrawingOptions {
   onScratchComplete?: (scratchPath: DrawingPath) => void
   // 既存パスを取得する関数（スクラッチ判定時に交差チェック用）
   getCurrentPaths?: () => DrawingPath[]
-  // デバッグ用ログコールバック（iPadでの可視化）
-  onLog?: (message: string, data?: any) => void
+
 }
 
 export const useDrawing = (
