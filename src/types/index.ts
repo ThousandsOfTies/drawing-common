@@ -24,8 +24,8 @@ export interface DrawingPath {
 export interface DrawingCanvasHandle {
   // 描画メソッド（Canvas座標系を受け取る）
   drawStroke: (points: { x: number, y: number }[], color: string, width: number) => void
-  // Canvas要素へのアクセス（後方互換性や直接操作用）
-  getCanvas: () => HTMLCanvasElement | null
+  // キャンバスサイズ取得（DOM要素を直接公開せずサイズのみ提供）
+  getSize: () => { width: number, height: number } | null
 }
 
 /**

@@ -99,7 +99,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
 
     // 親コンポーネントに内部のcanvas要素と描画メソッドを公開
     React.useImperativeHandle(ref, () => ({
-        getCanvas: () => canvasRef.current,
+        getSize: () => canvasRef.current ? { width: canvasRef.current.width, height: canvasRef.current.height } : null,
         drawStroke
     }))
 
@@ -107,7 +107,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
     // NOTE: DrawingCanvasHandleを実装したオブジェクトをRefとして渡す
     const internalHandleRef = {
         current: {
-            getCanvas: () => canvasRef.current,
+            getSize: () => canvasRef.current ? { width: canvasRef.current.width, height: canvasRef.current.height } : null,
             drawStroke
         }
     }

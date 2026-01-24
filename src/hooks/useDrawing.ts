@@ -97,11 +97,11 @@ export const useDrawing = (
   // バッチ間で最後の描画座標を保持（丸め誤差回避）
   const lastCanvasCoordRef = useRef<{ x: number, y: number } | null>(null)
 
-  // ヘルパー：Canvas要素の取得
-  const getCanvasElement = (): HTMLCanvasElement | null => {
+  // ヘルパー：Canvasサイズ取得
+  const getCanvasSize = (): { width: number, height: number } | null => {
     const current = canvasRef.current
     if (!current) return null
-    return current.getCanvas()
+    return current.getSize()
   }
 
   // ヘルパー：描画実行
@@ -112,14 +112,14 @@ export const useDrawing = (
   }
 
   const startDrawing = (x: number, y: number) => {
-    const canvas = getCanvasElement()
-    if (!canvas) return
+    const size = getCanvasSize()
+    if (!size) return
 
     setIsDrawing(true)
 
     // 正規化座標で保存（0-1の範囲）
-    const normalizedX = x / canvas.width
-    const normalizedY = y / canvas.height
+    const normalizedX = x / size.width
+    const normalizedY = y / size.height
 
     currentPathRef.current = {
       points: [{ x: normalizedX, y: normalizedY }],
@@ -132,12 +132,12 @@ export const useDrawing = (
   }
 
   const draw = (x: number, y: number) => {
-    const canvas = getCanvasElement()
-    if (!isDrawing || !currentPathRef.current || !canvas) return
+    const size = getCanvasSize()
+    if (!isDrawing || !currentPathRef.current || !size) return
 
     // 正規化
-    const normalizedX = x / canvas.width
-    const normalizedY = y / canvas.height
+    const normalizedX = x / size.width
+    const normalizedY = y / size.height
 
     // 今回追加するポイントのリスト
     const newPoints: { x: number, y: number }[] = []
@@ -152,7 +152,7 @@ export const useDrawing = (
       const dist = Math.sqrt(dx * dx + dy * dy)
 
       // キャンバスサイズに対する相対的な閾値（例: 5px相当）
-      const threshold = 5 / Math.min(canvas.width, canvas.height)
+      const threshold = 5 / Math.min(size.width, size.height)
 
       if (dist > threshold) {
         const steps = Math.min(10, Math.floor(dist / (threshold / 2))) // 最大10分割まで
@@ -174,31 +174,12 @@ export const useDrawing = (
       path.points.push(point)
     }
 
-    // 描画実行（補間点含む）
-
-    // 直前の点（pathの最後から2番目）があれば追加
-    // path.pointsには既にnewPointsが追加されているので、
-    // newPointsの最初の点の「1つ前」を取得するロジックが必要。
-
-    // 簡易的に：以前の実装と同様、直前の batch の最後の点を currentPath から取得するのではなく
-    // lastCanvasCoordRef を使うべきか？
-    // useDrawingのdrawロジックは「1点ずつ」追加するループになっているが、
-    // drawStrokeは「線の配列」を受け取る。
-    // ここは executeDraw に「直前の点」と「今回の点」のペアを渡すのが正しい。
-
-    // newPointsごとにループして executeDraw するのは非効率だが、
-    // draw関数の構造上仕方ないか。あるいはまとめて渡すか。
-    // いったん「2点間のセグメント」を描画する形にする。
-
-    let prevX = path.points[path.points.length - 1 - newPoints.length].x * canvas.width
-    let prevY = path.points[path.points.length - 1 - newPoints.length].y * canvas.height
-
-    // 初回の場合は lastCanvasCoordRef を使う？ 
-    // いや、path.points[0] は startDrawing で追加されている。
+    let prevX = path.points[path.points.length - 1 - newPoints.length].x * size.width
+    let prevY = path.points[path.points.length - 1 - newPoints.length].y * size.height
 
     for (const point of newPoints) {
-      const currX = point.x * canvas.width
-      const currY = point.y * canvas.height
+      const currX = point.x * size.width
+      const currY = point.y * size.height
 
       executeDraw([{ x: prevX, y: prevY }, { x: currX, y: currY }])
 
@@ -213,10 +194,10 @@ export const useDrawing = (
    * @param points 正規化されていない座標の配列 (canvas width/height で割る前)
    */
   const drawBatch = (points: Array<{ x: number, y: number }>) => {
-    const canvas = getCanvasElement()
+    const size = getCanvasSize()
     const path = currentPathRef.current
 
-    if (!isDrawing || !path || !canvas || points.length === 0) return
+    if (!isDrawing || !path || !size || points.length === 0) return
 
     // 重複バッチ検出: 前回最終点と今回最終点が同じなら二度呼びと判断してスキップ
     if (lastCanvasCoordRef.current && points.length > 0) {
@@ -230,8 +211,8 @@ export const useDrawing = (
     // 正規化座標に変換して path.points に追加
     points.forEach(p => {
       path.points.push({
-        x: p.x / canvas.width,
-        y: p.y / canvas.height
+        x: p.x / size.width,
+        y: p.y / size.height
       })
     })
 
@@ -274,7 +255,6 @@ export const useDrawing = (
       }
 
       currentPathRef.current = null
-      ctxRef.current = null
       lastCanvasCoordRef.current = null  // CRITICAL: Reset for next stroke
       setIsDrawing(false)
     }
