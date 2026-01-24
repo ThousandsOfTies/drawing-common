@@ -128,7 +128,6 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
     const activeTouchPointersRef = useRef<Set<number>>(new Set())
 
     // useDrawing hook (display-onlyモードでは無効化)
-    // @ts-ignore: Ref type mismatch (HTMLCanvasElement vs DrawingCanvasHandle) - useDrawing will be updated
     const drawingHookResult = interactionMode === 'full' ? useDrawing(internalHandleRef, {
         width: size,
         color,

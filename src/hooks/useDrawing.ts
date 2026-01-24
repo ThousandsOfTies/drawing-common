@@ -87,15 +87,12 @@ interface UseDrawingOptions {
 }
 
 export const useDrawing = (
-  // HTMLCanvasElement または DrawingCanvasHandle を受け取る
-  canvasRef: React.RefObject<HTMLCanvasElement | null> | React.RefObject<DrawingCanvasHandle | null>,
+  // DrawingCanvasHandle を受け取る
+  canvasRef: React.RefObject<DrawingCanvasHandle | null>,
   options: UseDrawingOptions
 ) => {
   const [isDrawing, setIsDrawing] = useState(false)
   const currentPathRef = useRef<DrawingPath | null>(null)
-
-  // レガシーモード（直接Context操作）用
-  const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
 
   // バッチ間で最後の描画座標を保持（丸め誤差回避）
   const lastCanvasCoordRef = useRef<{ x: number, y: number } | null>(null)
@@ -104,37 +101,14 @@ export const useDrawing = (
   const getCanvasElement = (): HTMLCanvasElement | null => {
     const current = canvasRef.current
     if (!current) return null
-    // DrawingCanvasHandleの場合
-    if ('getCanvas' in current) {
-      return current.getCanvas()
-    }
-    // HTMLCanvasElementの場合
-    return current as HTMLCanvasElement
+    return current.getCanvas()
   }
 
   // ヘルパー：描画実行
   const executeDraw = (points: { x: number, y: number }[]) => {
     const current = canvasRef.current
     if (!current) return
-
-    // 新しい DrawingCanvasHandle の場合
-    if ('drawStroke' in current) {
-      current.drawStroke(points, options.color, options.width)
-    }
-    // レガシー HTMLCanvasElement の場合
-    else {
-      const ctx = ctxRef.current // キャッシュされたContextを使用
-      if (!ctx) return
-
-      if (points.length < 2) return
-
-      ctx.beginPath()
-      ctx.moveTo(points[0].x, points[0].y)
-      for (let i = 1; i < points.length; i++) {
-        ctx.lineTo(points[i].x, points[i].y)
-      }
-      ctx.stroke()
-    }
+    current.drawStroke(points, options.color, options.width)
   }
 
   const startDrawing = (x: number, y: number) => {
@@ -155,23 +129,11 @@ export const useDrawing = (
 
     // 最初の点のcanvas座標を保存
     lastCanvasCoordRef.current = { x, y }
-
-    // レガシーモード用：Context初期化
-    if (!('drawStroke' in canvasRef.current!)) {
-      ctxRef.current = canvas.getContext('2d')!
-      ctxRef.current.strokeStyle = options.color
-      ctxRef.current.lineWidth = options.width
-      ctxRef.current.lineCap = 'round'
-      ctxRef.current.lineJoin = 'round'
-    }
   }
 
   const draw = (x: number, y: number) => {
     const canvas = getCanvasElement()
-    // drawStrokeモードならctxRefはnullでもOK
-    const isLegacy = canvasRef.current && !('drawStroke' in canvasRef.current)
     if (!isDrawing || !currentPathRef.current || !canvas) return
-    if (isLegacy && !ctxRef.current) return
 
     // 正規化
     const normalizedX = x / canvas.width
@@ -213,8 +175,6 @@ export const useDrawing = (
     }
 
     // 描画実行（補間点含む）
-    // Canvas座標に変換した点のリストを作成
-    const drawPoints: { x: number, y: number }[] = []
 
     // 直前の点（pathの最後から2番目）があれば追加
     // path.pointsには既にnewPointsが追加されているので、
@@ -256,9 +216,7 @@ export const useDrawing = (
     const canvas = getCanvasElement()
     const path = currentPathRef.current
 
-    const isLegacy = canvasRef.current && !('drawStroke' in canvasRef.current)
     if (!isDrawing || !path || !canvas || points.length === 0) return
-    if (isLegacy && !ctxRef.current) return
 
     // 重複バッチ検出: 前回最終点と今回最終点が同じなら二度呼びと判断してスキップ
     if (lastCanvasCoordRef.current && points.length > 0) {
@@ -328,7 +286,7 @@ export const useDrawing = (
    */
   const cancelDrawing = () => {
     currentPathRef.current = null
-    ctxRef.current = null
+
     lastCanvasCoordRef.current = null  // CRITICAL: Reset for next stroke
     setIsDrawing(false)
   }
