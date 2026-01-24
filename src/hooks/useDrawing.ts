@@ -98,15 +98,9 @@ export const useDrawing = (
   const lastCanvasCoordRef = useRef<{ x: number, y: number } | null>(null)
 
   const startDrawing = (x: number, y: number) => {
-    options.onLog?.('[useDrawing.startDrawing]', `called with x=${x.toFixed(0)} y=${y.toFixed(0)}`)
-
     const canvas = canvasRef.current
-    if (!canvas) {
-      options.onLog?.('[useDrawing.startDrawing]', 'RETURN: canvas is null')
-      return
-    }
+    if (!canvas) return
 
-    options.onLog?.('[useDrawing.startDrawing]', `canvas exists, width=${canvas.width} height=${canvas.height}`)
     setIsDrawing(true)
 
     // 正規化座標で保存（0-1の範囲）
@@ -128,8 +122,6 @@ export const useDrawing = (
     ctxRef.current.lineWidth = options.width
     ctxRef.current.lineCap = 'round'
     ctxRef.current.lineJoin = 'round'
-
-    options.onLog?.('[useDrawing.startDrawing]', 'completed successfully')
   }
 
   const draw = (x: number, y: number) => {
@@ -198,14 +190,11 @@ export const useDrawing = (
    * @param points 正規化されていない座標の配列 (canvas width/height で割る前)
    */
   const drawBatch = (points: Array<{ x: number, y: number }>) => {
-    options.onLog?.('[useDrawing.drawBatch]', `called with ${points.length} points`)
-
     const canvas = canvasRef.current
     const ctx = ctxRef.current
     const path = currentPathRef.current
 
     if (!isDrawing || !path || !ctx || !canvas || points.length === 0) {
-      options.onLog?.('[useDrawing.drawBatch]', `RETURN: isDrawing=${isDrawing} path=${!!path} ctx=${!!ctx} canvas=${!!canvas} points.length=${points.length}`)
       return
     }
 
