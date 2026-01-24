@@ -20,6 +20,14 @@ export interface DrawingPath {
   width: number
 }
 
+// DrawingCanvasが外部公開する操作ハンドル
+export interface DrawingCanvasHandle {
+  // 描画メソッド（Canvas座標系を受け取る）
+  drawStroke: (points: { x: number, y: number }[], color: string, width: number) => void
+  // Canvas要素へのアクセス（後方互換性や直接操作用）
+  getCanvas: () => HTMLCanvasElement | null
+}
+
 /**
  * 描画設定
  */

@@ -1,7 +1,7 @@
 ﻿import React, { useRef, useEffect, useState } from 'react'
 import { useDrawing, doPathsIntersect } from '../hooks/useDrawing'
 import { useEraser } from '../hooks/useEraser'
-import { DrawingPath, DrawingPoint, SelectionState } from '../types'
+import { DrawingPath, DrawingPoint, SelectionState, DrawingCanvasHandle } from '../types'
 
 // カーソルとアイコン用のSVG定義（icons.tsx準拠）
 const ICON_SVG = {
@@ -45,7 +45,8 @@ export interface DrawingCanvasProps {
     onUndo?: () => void     // 2本指タップでのUndo
 }
 
-export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasProps>(({
+
+export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(({
     width,
     height,
     className,
@@ -71,8 +72,46 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
 }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null)
 
-    // 親コンポーネントに内部のcanvas要素を公開
-    React.useImperativeHandle(ref, () => canvasRef.current!)
+    // 描画メソッドの実装
+    const drawStroke = (points: { x: number, y: number }[], color: string, width: number) => {
+        const canvas = canvasRef.current
+        if (!canvas) return
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return
+
+        ctx.lineCap = 'round'
+        ctx.lineJoin = 'round'
+        ctx.strokeStyle = color
+        ctx.lineWidth = width
+
+        if (points.length < 2) return
+
+        ctx.beginPath()
+        const start = points[0]
+        ctx.moveTo(start.x, start.y)
+
+        for (let i = 1; i < points.length; i++) {
+            const p = points[i]
+            ctx.lineTo(p.x, p.y)
+        }
+        ctx.stroke()
+    }
+
+    // 親コンポーネントに内部のcanvas要素と描画メソッドを公開
+    React.useImperativeHandle(ref, () => ({
+        getCanvas: () => canvasRef.current,
+        drawStroke
+    }))
+
+    // useDrawing用のハンドルRef（内部使用）
+    // NOTE: DrawingCanvasHandleを実装したオブジェクトをRefとして渡す
+    const internalHandleRef = {
+        current: {
+            getCanvas: () => canvasRef.current,
+            drawStroke
+        }
+    }
+
 
     const isDrawing = tool === 'pen'
     const isErasing = tool === 'eraser'
@@ -89,7 +128,8 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
     const activeTouchPointersRef = useRef<Set<number>>(new Set())
 
     // useDrawing hook (display-onlyモードでは無効化)
-    const drawingHookResult = interactionMode === 'full' ? useDrawing(canvasRef, {
+    // @ts-ignore: Ref type mismatch (HTMLCanvasElement vs DrawingCanvasHandle) - useDrawing will be updated
+    const drawingHookResult = interactionMode === 'full' ? useDrawing(internalHandleRef, {
         width: size,
         color,
         onPathComplete: (path) => {

@@ -73,7 +73,7 @@ export const isScratchPattern = (path: DrawingPath): boolean => {
 
 // useDrawing.ts
 import { useRef, useState } from 'react'
-import type { DrawingPath } from '../types'
+import type { DrawingPath, DrawingCanvasHandle } from '../types'
 
 interface UseDrawingOptions {
   width: number
@@ -88,17 +88,58 @@ interface UseDrawingOptions {
 }
 
 export const useDrawing = (
-  canvasRef: React.RefObject<HTMLCanvasElement>,
+  // HTMLCanvasElement または DrawingCanvasHandle を受け取る
+  canvasRef: React.RefObject<HTMLCanvasElement | null> | React.RefObject<DrawingCanvasHandle | null>,
   options: UseDrawingOptions
 ) => {
   const [isDrawing, setIsDrawing] = useState(false)
   const currentPathRef = useRef<DrawingPath | null>(null)
+
+  // レガシーモード（直接Context操作）用
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
+
   // バッチ間で最後の描画座標を保持（丸め誤差回避）
   const lastCanvasCoordRef = useRef<{ x: number, y: number } | null>(null)
 
+  // ヘルパー：Canvas要素の取得
+  const getCanvasElement = (): HTMLCanvasElement | null => {
+    const current = canvasRef.current
+    if (!current) return null
+    // DrawingCanvasHandleの場合
+    if ('getCanvas' in current) {
+      return current.getCanvas()
+    }
+    // HTMLCanvasElementの場合
+    return current as HTMLCanvasElement
+  }
+
+  // ヘルパー：描画実行
+  const executeDraw = (points: { x: number, y: number }[]) => {
+    const current = canvasRef.current
+    if (!current) return
+
+    // 新しい DrawingCanvasHandle の場合
+    if ('drawStroke' in current) {
+      current.drawStroke(points, options.color, options.width)
+    }
+    // レガシー HTMLCanvasElement の場合
+    else {
+      const ctx = ctxRef.current // キャッシュされたContextを使用
+      if (!ctx) return
+
+      if (points.length < 2) return
+
+      ctx.beginPath()
+      ctx.moveTo(points[0].x, points[0].y)
+      for (let i = 1; i < points.length; i++) {
+        ctx.lineTo(points[i].x, points[i].y)
+      }
+      ctx.stroke()
+    }
+  }
+
   const startDrawing = (x: number, y: number) => {
-    const canvas = canvasRef.current
+    const canvas = getCanvasElement()
     if (!canvas) return
 
     setIsDrawing(true)
@@ -116,17 +157,22 @@ export const useDrawing = (
     // 最初の点のcanvas座標を保存
     lastCanvasCoordRef.current = { x, y }
 
-    // contextをキャッシュし、スタイルを一度だけ設定
-    ctxRef.current = canvas.getContext('2d')!
-    ctxRef.current.strokeStyle = options.color
-    ctxRef.current.lineWidth = options.width
-    ctxRef.current.lineCap = 'round'
-    ctxRef.current.lineJoin = 'round'
+    // レガシーモード用：Context初期化
+    if (!('drawStroke' in canvasRef.current!)) {
+      ctxRef.current = canvas.getContext('2d')!
+      ctxRef.current.strokeStyle = options.color
+      ctxRef.current.lineWidth = options.width
+      ctxRef.current.lineCap = 'round'
+      ctxRef.current.lineJoin = 'round'
+    }
   }
 
   const draw = (x: number, y: number) => {
-    const canvas = canvasRef.current
-    if (!isDrawing || !currentPathRef.current || !ctxRef.current || !canvas) return
+    const canvas = getCanvasElement()
+    // drawStrokeモードならctxRefはnullでもOK
+    const isLegacy = canvasRef.current && !('drawStroke' in canvasRef.current)
+    if (!isDrawing || !currentPathRef.current || !canvas) return
+    if (isLegacy && !ctxRef.current) return
 
     // 正規化
     const normalizedX = x / canvas.width
@@ -162,27 +208,45 @@ export const useDrawing = (
     // 実際のタッチ/マウス位置を追加
     newPoints.push({ x: normalizedX, y: normalizedY })
 
-    // ポイントを順次追加して描画
-    const ctx = ctxRef.current
-
-
+    // ポイントを順次追加
     for (const point of newPoints) {
       path.points.push(point)
-      const len = path.points.length
+    }
 
-      if (len < 2) continue
+    // 描画実行（補間点含む）
+    // Canvas座標に変換した点のリストを作成
+    const drawPoints: { x: number, y: number }[] = []
 
-      // シンプルなLineTo描画（drawBatchと同じロジック）
-      const prevPt = path.points[len - 2]
-      const currPt = path.points[len - 1]
+    // 直前の点（pathの最後から2番目）があれば追加
+    // path.pointsには既にnewPointsが追加されているので、
+    // newPointsの最初の点の「1つ前」を取得するロジックが必要。
 
-      ctx.beginPath()
-      ctx.moveTo(prevPt.x * canvas.width, prevPt.y * canvas.height)
-      ctx.lineTo(currPt.x * canvas.width, currPt.y * canvas.height)
-      ctx.stroke()
+    // 簡易的に：以前の実装と同様、直前の batch の最後の点を currentPath から取得するのではなく
+    // lastCanvasCoordRef を使うべきか？
+    // useDrawingのdrawロジックは「1点ずつ」追加するループになっているが、
+    // drawStrokeは「線の配列」を受け取る。
+    // ここは executeDraw に「直前の点」と「今回の点」のペアを渡すのが正しい。
+
+    // newPointsごとにループして executeDraw するのは非効率だが、
+    // draw関数の構造上仕方ないか。あるいはまとめて渡すか。
+    // いったん「2点間のセグメント」を描画する形にする。
+
+    let prevX = path.points[path.points.length - 1 - newPoints.length].x * canvas.width
+    let prevY = path.points[path.points.length - 1 - newPoints.length].y * canvas.height
+
+    // 初回の場合は lastCanvasCoordRef を使う？ 
+    // いや、path.points[0] は startDrawing で追加されている。
+
+    for (const point of newPoints) {
+      const currX = point.x * canvas.width
+      const currY = point.y * canvas.height
+
+      executeDraw([{ x: prevX, y: prevY }, { x: currX, y: currY }])
+
+      prevX = currX
+      prevY = currY
     }
   }
-
 
   /**
    * Coalesced Events用の一括描画メソッド
@@ -190,16 +254,14 @@ export const useDrawing = (
    * @param points 正規化されていない座標の配列 (canvas width/height で割る前)
    */
   const drawBatch = (points: Array<{ x: number, y: number }>) => {
-    const canvas = canvasRef.current
-    const ctx = ctxRef.current
+    const canvas = getCanvasElement()
     const path = currentPathRef.current
 
-    if (!isDrawing || !path || !ctx || !canvas || points.length === 0) {
-      return
-    }
+    const isLegacy = canvasRef.current && !('drawStroke' in canvasRef.current)
+    if (!isDrawing || !path || !canvas || points.length === 0) return
+    if (isLegacy && !ctxRef.current) return
 
     // 重複バッチ検出: 前回最終点と今回最終点が同じなら二度呼びと判断してスキップ
-    // （イベントシステムの二度呼びによる意図しない描画を防ぐ）
     if (lastCanvasCoordRef.current && points.length > 0) {
       const lastPoint = points[points.length - 1]
       if (lastPoint.x === lastCanvasCoordRef.current.x &&
@@ -224,14 +286,8 @@ export const useDrawing = (
     }
     localPoints.push(...points)
 
-    // i=1 から開始して i-1 → i を順次接続
-    // （i=0 は前回の最後の点なので、i=1 が最初の新しい点）
-    for (let i = 1; i < localPoints.length; i++) {
-      ctx.beginPath()
-      ctx.moveTo(localPoints[i - 1].x, localPoints[i - 1].y)
-      ctx.lineTo(localPoints[i].x, localPoints[i].y)
-      ctx.stroke()
-    }
+    // 描画実行
+    executeDraw(localPoints)
 
     // 最後の点を保存（次のバッチとの接続用）
     if (points.length > 0) {

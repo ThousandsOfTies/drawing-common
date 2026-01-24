@@ -1,5 +1,5 @@
 ﻿// Types
-export type { DrawingPath, DrawingPoint, DrawingConfig, DrawingHistory, ToolType, SelectionState } from './types'
+export type { DrawingPath, DrawingPoint, DrawingConfig, DrawingHistory, ToolType, SelectionState, DrawingCanvasHandle } from './types'
 
 // Hooks
 export { useDrawing, isScratchPattern, doPathsIntersect } from './hooks/useDrawing'
