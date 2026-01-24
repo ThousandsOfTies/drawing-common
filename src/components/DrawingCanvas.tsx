@@ -142,9 +142,10 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         onPathsChange?.(newPaths)
     })
 
+    // 描画済みのパス数を記憶（差分描画用）
+    const renderedPathCountRef = useRef(0)
+
     // 再描画ロジック（pathsが変わった時）
-    // DEBUG: 二重線テストのため一時的に無効化
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     useEffect(() => {
         const canvas = canvasRef.current
         if (!canvas) return
@@ -152,26 +153,55 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
         const ctx = canvas.getContext('2d')
         if (!ctx) return
 
-        // 常にクリアして再描画
-        ctx.clearRect(0, 0, canvas.width, canvas.height)
+        // 描画スタイル設定（共通）
         ctx.lineCap = 'round'
         ctx.lineJoin = 'round'
 
         // ラッソストロークのインデックス（別途破線で描画するためスキップ）
         const lassoIdx = selectionState?.lassoStrokeIndex ?? -1
 
-        paths.forEach((path, index) => {
-            // ラッソストロークはここではスキップ（後で破線として描画）
-            if (index === lassoIdx) return
+        // --- 差分描画判定 ---
+        const currentPathCount = paths.length
+        const prevPathCount = renderedPathCountRef.current
+
+        // 全再描画が必要な条件:
+        // 1. パスが減った (Undo / 消しゴム)
+        // 2. パス数が変わらずとも内容が変わった可能性（簡易判定として長さが同じでも全描画の方が安全だが、今回はUndo検知を主眼）
+        // 3. 選択状態が変わった (ハイライト表示のため)
+        // 4. キャンバスサイズが変わった (依存配列で検知される)
+        // 5. 外部から強制再描画フラグが来た場合 (今回はPropsにないが念頭に置く)
+        // NOTE: selectionStateが変わると常にフル描画になる。選択操作中はこれは妥当。
+
+        let startIndex = 0
+        const isIncremental = currentPathCount > prevPathCount && prevPathCount > 0
+        const needsFullRedraw =
+            currentPathCount < prevPathCount || // Undo/Eraser
+            selectionState || // Selection active (highlighting changes)
+            lassoIdx !== -1 || // Lasso active
+            prevPathCount === 0; // Initial render
+
+        if (!needsFullRedraw && isIncremental) {
+            // 差分描画: 前回描画した続きから描く
+            startIndex = prevPathCount
+        } else {
+            // 全描画: クリアする
+            ctx.clearRect(0, 0, canvas.width, canvas.height)
+            startIndex = 0
+        }
+
+        // 描画ループ
+        for (let i = startIndex; i < currentPathCount; i++) {
+            const path = paths[i]
+            // ラッソストロークはスキップ
+            if (i === lassoIdx) continue
 
             ctx.beginPath()
             // 選択されたパスは青でハイライト
-            const isSelected = selectionState?.selectedIndices.includes(index)
+            const isSelected = selectionState?.selectedIndices.includes(i)
             ctx.strokeStyle = isSelected ? '#3498db' : path.color
             ctx.lineWidth = path.width
 
             if (path.points.length > 0) {
-                // ベジェ曲線で滑らかに描画（useDrawingと同じロジック）
                 const pts = path.points
                 if (pts.length === 1) {
                     // 1点の場合は点を描画
@@ -188,9 +218,9 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
                     // 3点以上：quadraticCurveToで滑らかなカーブ
                     ctx.moveTo(pts[0].x * canvas.width, pts[0].y * canvas.height)
 
-                    for (let i = 1; i < pts.length - 1; i++) {
-                        const p1 = pts[i]
-                        const p2 = pts[i + 1]
+                    for (let j = 1; j < pts.length - 1; j++) {
+                        const p1 = pts[j]
+                        const p2 = pts[j + 1]
                         // 制御点は現在の点、終点は次の点との中間点
                         const cpX = p1.x * canvas.width
                         const cpY = p1.y * canvas.height
@@ -204,7 +234,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
                     ctx.stroke()
                 }
             }
-        })
+        }
 
         // ラッソストロークを破線で描画（選択モード中のみ）
         if (lassoIdx >= 0 && lassoIdx < paths.length) {
@@ -224,7 +254,9 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, DrawingCanvasPr
             ctx.setLineDash([])
         }
 
-        // バウンディングボックスは表示しない（ユーザー要望）
+        // 描画済みカウントを更新
+        renderedPathCountRef.current = currentPathCount
+
     }, [paths, width, height, selectionState, isDrawingExternal])
 
     // タッチがスタイラスかどうか判定（指のみを弾くため）
