@@ -9,6 +9,7 @@ export type ToolType = 'pen' | 'eraser' | 'selection'
 export interface DrawingPoint {
   x: number
   y: number
+  width?: number
 }
 
 /**
@@ -21,6 +22,7 @@ export interface DrawingPath {
   /** 1 未満では、同じ場所に重ね描きするほど色が濃くなる。 */
   opacity?: number
   kind?: 'stroke' | 'fill'
+  style?: 'pencil' | 'marker' | 'brush'
 }
 
 // DrawingCanvasが外部公開する操作ハンドル

@@ -23,6 +23,7 @@ export interface DrawingCanvasProps {
     color: string
     size: number
     opacity?: number
+    strokeStyle?: 'pencil' | 'marker' | 'brush'
     eraserSize: number
     paths: DrawingPath[]
     isCtrlPressed?: boolean // パン操作用（Ctrl押下時は描画無効）
@@ -56,6 +57,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
     color,
     size,
     opacity = 1,
+    strokeStyle = 'pencil',
     eraserSize,
     paths,
     isCtrlPressed = false,
@@ -167,6 +169,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
         width: size,
         color,
         opacity,
+        style: strokeStyle,
         onPathComplete: (path) => {
             const now = Date.now()
             if (now - lastPathTimeRef.current < 50) {
@@ -296,6 +299,14 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
                     ctx.moveTo(pts[0].x * canvas.width, pts[0].y * canvas.height)
                     ctx.lineTo(pts[1].x * canvas.width, pts[1].y * canvas.height)
                     ctx.stroke()
+                } else if (path.style === 'brush') {
+                    for (let j = 1; j < pts.length; j++) {
+                        ctx.beginPath()
+                        ctx.lineWidth = ((pts[j - 1].width ?? path.width) + (pts[j].width ?? path.width)) / 2
+                        ctx.moveTo(pts[j - 1].x * canvas.width, pts[j - 1].y * canvas.height)
+                        ctx.lineTo(pts[j].x * canvas.width, pts[j].y * canvas.height)
+                        ctx.stroke()
+                    }
                 } else {
                     // 3点以上：quadraticCurveToで滑らかなカーブ
                     ctx.moveTo(pts[0].x * canvas.width, pts[0].y * canvas.height)

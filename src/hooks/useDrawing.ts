@@ -79,6 +79,7 @@ interface UseDrawingOptions {
   width: number
   color: string
   opacity?: number
+  style?: 'pencil' | 'marker' | 'brush'
   onPathComplete?: (path: DrawingPath) => void
   // スクラッチ完了時のコールバック（交差したパスを削除するため）
   onScratchComplete?: (scratchPath: DrawingPath) => void
@@ -97,6 +98,22 @@ export const useDrawing = (
 
   // バッチ間で最後の描画座標を保持（丸め誤差回避）
   const lastCanvasCoordRef = useRef<{ x: number, y: number } | null>(null)
+  const lastInputTimeRef = useRef(0)
+
+  const getPointWidth = (x: number, y: number, pressure?: number) => {
+    if (options.style === 'pencil') return Math.max(1, options.width * 0.7)
+    if (options.style === 'marker') return options.width * 1.15
+    if (options.style !== 'brush') return options.width
+    const now = performance.now()
+    const previous = lastCanvasCoordRef.current
+    const speed = previous && lastInputTimeRef.current ? Math.hypot(x - previous.x, y - previous.y) / Math.max(1, now - lastInputTimeRef.current) : 0
+    lastInputTimeRef.current = now
+    // 筆圧が使える端末では優先し、マウス・指では速度で自然な強弱を付ける。
+    const factor = pressure && pressure > 0 && pressure < 1
+      ? 0.3 + pressure * 0.9
+      : Math.max(0.35, Math.min(1.25, 1.15 - speed * 0.12))
+    return Math.max(1, options.width * factor)
+  }
 
   // ヘルパー：Canvasサイズ取得
   const getCanvasSize = (): { width: number, height: number } | null => {
@@ -112,7 +129,7 @@ export const useDrawing = (
     current.drawStroke(points, options.color, options.width, options.opacity)
   }
 
-  const startDrawing = (x: number, y: number) => {
+  const startDrawing = (x: number, y: number, pressure?: number) => {
     const size = getCanvasSize()
     if (!size) return
 
@@ -123,10 +140,11 @@ export const useDrawing = (
     const normalizedY = y / size.height
 
     currentPathRef.current = {
-      points: [{ x: normalizedX, y: normalizedY }],
+      points: [{ x: normalizedX, y: normalizedY, width: getPointWidth(x, y, pressure) }],
       color: options.color,
       width: options.width,
-      opacity: options.opacity
+      opacity: options.opacity,
+      style: options.style
     }
 
     // 最初の点のcanvas座標を保存
@@ -195,7 +213,7 @@ export const useDrawing = (
    * シンプルな順次描画: 前回の最後の点 → 新しい点たちを順番に接続
    * @param points 正規化されていない座標の配列 (canvas width/height で割る前)
    */
-  const drawBatch = (points: Array<{ x: number, y: number }>) => {
+  const drawBatch = (points: Array<{ x: number, y: number, pressure?: number }>) => {
     const size = getCanvasSize()
     const path = currentPathRef.current
 
@@ -214,7 +232,8 @@ export const useDrawing = (
     points.forEach(p => {
       path.points.push({
         x: p.x / size.width,
-        y: p.y / size.height
+        y: p.y / size.height,
+        width: getPointWidth(p.x, p.y, p.pressure)
       })
     })
 
