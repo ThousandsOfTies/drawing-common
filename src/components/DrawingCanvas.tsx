@@ -22,6 +22,7 @@ export interface DrawingCanvasProps {
     tool: 'pen' | 'eraser'
     color: string
     size: number
+    opacity?: number
     eraserSize: number
     paths: DrawingPath[]
     isCtrlPressed?: boolean // パン操作用（Ctrl押下時は描画無効）
@@ -54,6 +55,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
     tool,
     color,
     size,
+    opacity = 1,
     eraserSize,
     paths,
     isCtrlPressed = false,
@@ -73,18 +75,23 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
     const canvasRef = useRef<HTMLCanvasElement>(null)
 
     // 描画メソッドの実装
-    const drawStroke = (points: { x: number, y: number }[], color: string, width: number) => {
+    const drawStroke = (points: { x: number, y: number }[], color: string, width: number, strokeOpacity = 1) => {
         const canvas = canvasRef.current
         if (!canvas) return
         const ctx = canvas.getContext('2d')
         if (!ctx) return
 
+        ctx.save()
         ctx.lineCap = 'round'
         ctx.lineJoin = 'round'
         ctx.strokeStyle = color
+        ctx.globalAlpha = strokeOpacity
         ctx.lineWidth = width
 
-        if (points.length < 2) return
+        if (points.length < 2) {
+            ctx.restore()
+            return
+        }
 
         ctx.beginPath()
         const start = points[0]
@@ -95,6 +102,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
             ctx.lineTo(p.x, p.y)
         }
         ctx.stroke()
+        ctx.restore()
     }
 
     // 親コンポーネントに内部のcanvas要素と描画メソッドを公開
@@ -131,6 +139,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
     const drawingHookResult = interactionMode === 'full' ? useDrawing(internalHandleRef, {
         width: size,
         color,
+        opacity,
         onPathComplete: (path) => {
             const now = Date.now()
             if (now - lastPathTimeRef.current < 50) {
@@ -238,6 +247,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
             // 選択されたパスは青でハイライト
             const isSelected = selectionState?.selectedIndices.includes(i)
             ctx.strokeStyle = isSelected ? '#3498db' : path.color
+            ctx.globalAlpha = isSelected ? 1 : (path.opacity ?? 1)
             ctx.lineWidth = path.width
 
             if (path.points.length > 0) {
@@ -274,6 +284,8 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
                 }
             }
         }
+
+        ctx.globalAlpha = 1
 
         // ラッソストロークを破線で描画（選択モード中のみ）
         if (lassoIdx >= 0 && lassoIdx < paths.length) {
@@ -776,4 +788,3 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
         />
     )
 })
-

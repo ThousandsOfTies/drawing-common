@@ -78,6 +78,7 @@ import type { DrawingPath, DrawingCanvasHandle } from '../types'
 interface UseDrawingOptions {
   width: number
   color: string
+  opacity?: number
   onPathComplete?: (path: DrawingPath) => void
   // スクラッチ完了時のコールバック（交差したパスを削除するため）
   onScratchComplete?: (scratchPath: DrawingPath) => void
@@ -108,7 +109,7 @@ export const useDrawing = (
   const executeDraw = (points: { x: number, y: number }[]) => {
     const current = canvasRef.current
     if (!current) return
-    current.drawStroke(points, options.color, options.width)
+    current.drawStroke(points, options.color, options.width, options.opacity)
   }
 
   const startDrawing = (x: number, y: number) => {
@@ -124,7 +125,8 @@ export const useDrawing = (
     currentPathRef.current = {
       points: [{ x: normalizedX, y: normalizedY }],
       color: options.color,
-      width: options.width
+      width: options.width,
+      opacity: options.opacity
     }
 
     // 最初の点のcanvas座標を保存
@@ -280,4 +282,3 @@ export const useDrawing = (
     cancelDrawing
   }
 }
-
