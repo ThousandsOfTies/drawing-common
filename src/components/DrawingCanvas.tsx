@@ -294,11 +294,6 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
                     ctx.arc(pts[0].x * canvas.width, pts[0].y * canvas.height, path.width / 2, 0, Math.PI * 2)
                     ctx.fillStyle = ctx.strokeStyle
                     ctx.fill()
-                } else if (pts.length === 2) {
-                    // 2点の場合は直線
-                    ctx.moveTo(pts[0].x * canvas.width, pts[0].y * canvas.height)
-                    ctx.lineTo(pts[1].x * canvas.width, pts[1].y * canvas.height)
-                    ctx.stroke()
                 } else if (path.style === 'brush') {
                     for (let j = 1; j < pts.length; j++) {
                         ctx.beginPath()

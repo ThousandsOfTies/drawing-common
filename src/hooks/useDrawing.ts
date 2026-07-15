@@ -98,16 +98,16 @@ export const useDrawing = (
 
   // バッチ間で最後の描画座標を保持（丸め誤差回避）
   const lastCanvasCoordRef = useRef<{ x: number, y: number } | null>(null)
-  const lastInputTimeRef = useRef(0)
+  const lastWidthSampleRef = useRef<{ x: number, y: number, time: number } | null>(null)
 
   const getPointWidth = (x: number, y: number, pressure?: number) => {
     if (options.style === 'pencil') return Math.max(1, options.width * 0.7)
     if (options.style === 'marker') return options.width * 1.15
     if (options.style !== 'brush') return options.width
     const now = performance.now()
-    const previous = lastCanvasCoordRef.current
-    const speed = previous && lastInputTimeRef.current ? Math.hypot(x - previous.x, y - previous.y) / Math.max(1, now - lastInputTimeRef.current) : 0
-    lastInputTimeRef.current = now
+    const previous = lastWidthSampleRef.current
+    const speed = previous ? Math.hypot(x - previous.x, y - previous.y) / Math.max(1, now - previous.time) : 0
+    lastWidthSampleRef.current = { x, y, time: now }
     // 筆圧が使える端末では優先し、マウス・指では速度で自然な強弱を付ける。
     const factor = pressure && pressure > 0 && pressure < 1
       ? 0.3 + pressure * 0.9
@@ -123,10 +123,10 @@ export const useDrawing = (
   }
 
   // ヘルパー：描画実行
-  const executeDraw = (points: { x: number, y: number }[]) => {
+  const executeDraw = (points: { x: number, y: number }[], width = options.width) => {
     const current = canvasRef.current
     if (!current) return
-    current.drawStroke(points, options.color, options.width, options.opacity)
+    current.drawStroke(points, options.color, width, options.opacity)
   }
 
   const startDrawing = (x: number, y: number, pressure?: number) => {
@@ -201,7 +201,7 @@ export const useDrawing = (
       const currX = point.x * size.width
       const currY = point.y * size.height
 
-      executeDraw([{ x: prevX, y: prevY }, { x: currX, y: currY }])
+      executeDraw([{ x: prevX, y: prevY }, { x: currX, y: currY }], getPointWidth(currX, currY))
 
       prevX = currX
       prevY = currY
@@ -245,8 +245,11 @@ export const useDrawing = (
     }
     localPoints.push(...points)
 
-    // 描画実行
-    executeDraw(localPoints)
+    // 各入力点の幅で直ちに線分を描く。リリース後の再描画を待たない。
+    for (let i = 1; i < localPoints.length; i++) {
+      const pointIndex = Math.max(0, path.points.length - points.length + i - 1)
+      executeDraw([localPoints[i - 1], localPoints[i]], path.points[pointIndex]?.width ?? options.width)
+    }
 
     // 最後の点を保存（次のバッチとの接続用）
     if (points.length > 0) {
@@ -277,6 +280,7 @@ export const useDrawing = (
 
       currentPathRef.current = null
       lastCanvasCoordRef.current = null  // CRITICAL: Reset for next stroke
+      lastWidthSampleRef.current = null
       setIsDrawing(false)
     }
   }
@@ -289,6 +293,7 @@ export const useDrawing = (
     currentPathRef.current = null
 
     lastCanvasCoordRef.current = null  // CRITICAL: Reset for next stroke
+    lastWidthSampleRef.current = null
     setIsDrawing(false)
   }
 
