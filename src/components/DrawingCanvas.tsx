@@ -19,7 +19,7 @@ export interface DrawingCanvasProps {
     style?: React.CSSProperties
 
     // 状態
-    tool: 'pen' | 'eraser'
+    tool: 'pen' | 'eraser' | 'fill'
     color: string
     size: number
     opacity?: number
@@ -105,10 +105,36 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
         ctx.restore()
     }
 
+    const fillAt = (x: number, y: number, color: string, fillOpacity = 1) => {
+        const canvas = canvasRef.current
+        const ctx = canvas?.getContext('2d')
+        if (!canvas || !ctx || x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) return
+        const image = ctx.getImageData(0, 0, canvas.width, canvas.height)
+        const data = image.data
+        const start = (Math.floor(y) * canvas.width + Math.floor(x)) * 4
+        // ペンの上ではなく、透明な領域だけを塗る。
+        if (data[start + 3] > 10) return
+        const match = color.match(/^#([0-9a-f]{6})$/i)
+        if (!match) return
+        const hex = match[1]
+        const rgba = [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16), Math.round(fillOpacity * 255)]
+        const stack: Array<[number, number]> = [[Math.floor(x), Math.floor(y)]]
+        while (stack.length) {
+            const [px, py] = stack.pop()!
+            if (px < 0 || py < 0 || px >= canvas.width || py >= canvas.height) continue
+            const index = (py * canvas.width + px) * 4
+            if (data[index + 3] > 10) continue
+            data[index] = rgba[0]; data[index + 1] = rgba[1]; data[index + 2] = rgba[2]; data[index + 3] = rgba[3]
+            stack.push([px + 1, py], [px - 1, py], [px, py + 1], [px, py - 1])
+        }
+        ctx.putImageData(image, 0, 0)
+    }
+
     // 親コンポーネントに内部のcanvas要素と描画メソッドを公開
     React.useImperativeHandle(ref, () => ({
         getSize: () => canvasRef.current ? { width: canvasRef.current.width, height: canvasRef.current.height } : null,
-        drawStroke
+        drawStroke,
+        fillAt
     }))
 
     // useDrawing用のハンドルRef（内部使用）
@@ -116,7 +142,8 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
     const internalHandleRef = {
         current: {
             getSize: () => canvasRef.current ? { width: canvasRef.current.width, height: canvasRef.current.height } : null,
-            drawStroke
+            drawStroke,
+            fillAt
         }
     }
 
@@ -242,6 +269,12 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
             const path = paths[i]
             // ラッソストロークはスキップ
             if (i === lassoIdx) continue
+
+            if (path.kind === 'fill') {
+                const point = path.points[0]
+                if (point) fillAt(point.x * canvas.width, point.y * canvas.height, path.color, path.opacity ?? 1)
+                continue
+            }
 
             ctx.beginPath()
             // 選択されたパスは青でハイライト

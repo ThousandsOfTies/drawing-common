@@ -20,12 +20,14 @@ export interface DrawingPath {
   width: number
   /** 1 未満では、同じ場所に重ね描きするほど色が濃くなる。 */
   opacity?: number
+  kind?: 'stroke' | 'fill'
 }
 
 // DrawingCanvasが外部公開する操作ハンドル
 export interface DrawingCanvasHandle {
   // 描画メソッド（Canvas座標系を受け取る）
   drawStroke: (points: { x: number, y: number }[], color: string, width: number, opacity?: number) => void
+  fillAt: (x: number, y: number, color: string, opacity?: number) => void
   // キャンバスサイズ取得（DOM要素を直接公開せずサイズのみ提供）
   getSize: () => { width: number, height: number } | null
 }
