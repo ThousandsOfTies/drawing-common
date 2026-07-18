@@ -26,6 +26,7 @@ export interface DrawingCanvasProps {
     strokeStyle?: 'pencil' | 'marker' | 'brush'
     eraserSize: number
     paths: DrawingPath[]
+    previewPath?: DrawingPath | null
     isCtrlPressed?: boolean // パン操作用（Ctrl押下時は描画無効）
     stylusOnly?: boolean    // パームリジェクション（Apple Pencilのみ描画許可）
     isDrawingExternal?: boolean // 親コンポーネントの描画状態（キャンバス再描画の制御用）
@@ -60,6 +61,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
     strokeStyle = 'pencil',
     eraserSize,
     paths,
+    previewPath = null,
     isCtrlPressed = false,
     stylusOnly = false,
     isDrawingExternal = false,
@@ -75,6 +77,11 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
     onUndo
 }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null)
+    const previewCanvasRef = useRef<HTMLCanvasElement>(null)
+    // 半透明ストロークの自己重なりを防ぐための再利用レイヤー。
+    // ストロークごとに巨大な canvas を生成しない。
+    const transparencyLayerRef = useRef<HTMLCanvasElement | null>(null)
+    const wasDrawingExternalRef = useRef(false)
 
     // 描画メソッドの実装
     const drawStroke = (points: { x: number, y: number }[], color: string, width: number, strokeOpacity = 1) => {
@@ -231,6 +238,14 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
         const ctx = canvas.getContext('2d')
         if (!ctx) return
 
+        const wasDrawingExternal = wasDrawingExternalRef.current
+        wasDrawingExternalRef.current = isDrawingExternal
+
+        // 描画開始時は既存キャンバスを消さず、入力に追従する差分描画をそのまま使う。
+        // 描画終了時には、ライブ描画を消して保存済みの幅（両端の細さを含む）で描き直す。
+        if (isDrawingExternal && !wasDrawingExternal) return
+        const justFinishedExternalDrawing = !isDrawingExternal && wasDrawingExternal
+
         // 描画スタイル設定（共通）
         ctx.lineCap = 'round'
         ctx.lineJoin = 'round'
@@ -256,7 +271,8 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
             currentPathCount < prevPathCount || // Undo/Eraser
             selectionState || // Selection active (highlighting changes)
             lassoIdx !== -1 || // Lasso active
-            prevPathCount === 0; // Initial render
+            prevPathCount === 0 || // Initial render
+            justFinishedExternalDrawing;
 
         if (!needsFullRedraw && isIncremental) {
             // 差分描画: 前回描画した続きから描く
@@ -279,32 +295,48 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
                 continue
             }
 
-            ctx.beginPath()
             // 選択されたパスは青でハイライト
             const isSelected = selectionState?.selectedIndices.includes(i)
-            ctx.strokeStyle = isSelected ? '#3498db' : path.color
-            ctx.globalAlpha = isSelected ? 1 : (path.opacity ?? 1)
-            ctx.lineWidth = path.width
+            const pathOpacity = isSelected ? 1 : (path.opacity ?? 1)
+            // 半透明ストロークは不透明なオフスクリーン層に描いてから一度だけ合成する。
+            // これにより、同じストローク内の線分・丸い端部が重なっても濃くならない。
+            const strokeLayer = pathOpacity < 1
+                ? (transparencyLayerRef.current ?? (transparencyLayerRef.current = document.createElement('canvas')))
+                : null
+            if (strokeLayer) {
+                if (strokeLayer.width !== canvas.width || strokeLayer.height !== canvas.height) {
+                    strokeLayer.width = canvas.width
+                    strokeLayer.height = canvas.height
+                }
+            }
+            const strokeCtx = strokeLayer?.getContext('2d') ?? ctx
+            if (strokeLayer) strokeCtx.clearRect(0, 0, strokeLayer.width, strokeLayer.height)
+            strokeCtx.lineCap = 'round'
+            strokeCtx.lineJoin = 'round'
+            strokeCtx.strokeStyle = isSelected ? '#3498db' : path.color
+            strokeCtx.globalAlpha = 1
+            strokeCtx.lineWidth = path.width
 
             if (path.points.length > 0) {
                 const pts = path.points
                 if (pts.length === 1) {
                     // 1点の場合は点を描画
-                    ctx.beginPath()
-                    ctx.arc(pts[0].x * canvas.width, pts[0].y * canvas.height, path.width / 2, 0, Math.PI * 2)
-                    ctx.fillStyle = ctx.strokeStyle
-                    ctx.fill()
+                    strokeCtx.beginPath()
+                    strokeCtx.arc(pts[0].x * canvas.width, pts[0].y * canvas.height, (pts[0].width ?? path.width) / 2, 0, Math.PI * 2)
+                    strokeCtx.fillStyle = strokeCtx.strokeStyle
+                    strokeCtx.fill()
                 } else if (path.style === 'brush') {
                     for (let j = 1; j < pts.length; j++) {
-                        ctx.beginPath()
-                        ctx.lineWidth = ((pts[j - 1].width ?? path.width) + (pts[j].width ?? path.width)) / 2
-                        ctx.moveTo(pts[j - 1].x * canvas.width, pts[j - 1].y * canvas.height)
-                        ctx.lineTo(pts[j].x * canvas.width, pts[j].y * canvas.height)
-                        ctx.stroke()
+                        strokeCtx.beginPath()
+                        strokeCtx.lineWidth = ((pts[j - 1].width ?? path.width) + (pts[j].width ?? path.width)) / 2
+                        strokeCtx.moveTo(pts[j - 1].x * canvas.width, pts[j - 1].y * canvas.height)
+                        strokeCtx.lineTo(pts[j].x * canvas.width, pts[j].y * canvas.height)
+                        strokeCtx.stroke()
                     }
                 } else {
                     // 3点以上：quadraticCurveToで滑らかなカーブ
-                    ctx.moveTo(pts[0].x * canvas.width, pts[0].y * canvas.height)
+                    strokeCtx.beginPath()
+                    strokeCtx.moveTo(pts[0].x * canvas.width, pts[0].y * canvas.height)
 
                     for (let j = 1; j < pts.length - 1; j++) {
                         const p1 = pts[j]
@@ -314,13 +346,20 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
                         const cpY = p1.y * canvas.height
                         const endX = (p1.x + p2.x) / 2 * canvas.width
                         const endY = (p1.y + p2.y) / 2 * canvas.height
-                        ctx.quadraticCurveTo(cpX, cpY, endX, endY)
+                        strokeCtx.quadraticCurveTo(cpX, cpY, endX, endY)
                     }
                     // 最後の点まで描画
                     const lastPt = pts[pts.length - 1]
-                    ctx.lineTo(lastPt.x * canvas.width, lastPt.y * canvas.height)
-                    ctx.stroke()
+                    strokeCtx.lineTo(lastPt.x * canvas.width, lastPt.y * canvas.height)
+                    strokeCtx.stroke()
                 }
+            }
+
+            if (strokeLayer) {
+                ctx.save()
+                ctx.globalAlpha = pathOpacity
+                ctx.drawImage(strokeLayer, 0, 0)
+                ctx.restore()
             }
         }
 
@@ -690,7 +729,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
 
         if (isDrawing) {
             const coords = toCanvasCoordinates(e)
-            if (coords) hookStartDrawing(coords.x, coords.y)
+            if (coords) hookStartDrawing(coords.x, coords.y, e.pointerType === 'pen' ? e.pressure : undefined, e.timeStamp)
         } else if (isErasing) {
             handleEraserDown(e)
         }
@@ -724,7 +763,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
             }
 
             // すべての Coalesced Events から座標を抽出
-            const batchPoints: Array<{ x: number, y: number }> = []
+            const batchPoints: Array<{ x: number, y: number, pressure?: number, time?: number }> = []
 
             for (const ev of events) {
                 // Canvas座標に変換
@@ -732,7 +771,8 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
                 const scaleY = canvas.height / rect.height
                 const x = (ev.clientX - rect.left) * scaleX
                 const y = (ev.clientY - rect.top) * scaleY
-                batchPoints.push({ x, y })
+                // mouse の pressure は固定値なので、筆圧としてはペン入力のみ使う。
+                batchPoints.push({ x, y, pressure: ev.pointerType === 'pen' ? ev.pressure : undefined, time: ev.timeStamp })
             }
 
             // Coalesced Events を一括処理
@@ -807,8 +847,48 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
         }
     }
 
+    useEffect(() => {
+        const canvas = previewCanvasRef.current
+        if (!canvas) return
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+        if (!previewPath?.points.length) return
+
+        const pts = previewPath.points
+        ctx.lineCap = 'round'
+        ctx.lineJoin = 'round'
+        ctx.strokeStyle = previewPath.color
+        ctx.fillStyle = previewPath.color
+        ctx.globalAlpha = 1
+
+        if (pts.length === 1) {
+            ctx.beginPath()
+            ctx.arc(pts[0].x * canvas.width, pts[0].y * canvas.height, (pts[0].width ?? previewPath.width) / 2, 0, Math.PI * 2)
+            ctx.fill()
+            return
+        }
+
+        if (previewPath.style === 'brush') {
+            for (let i = 1; i < pts.length; i++) {
+                ctx.beginPath()
+                ctx.lineWidth = ((pts[i - 1].width ?? previewPath.width) + (pts[i].width ?? previewPath.width)) / 2
+                ctx.moveTo(pts[i - 1].x * canvas.width, pts[i - 1].y * canvas.height)
+                ctx.lineTo(pts[i].x * canvas.width, pts[i].y * canvas.height)
+                ctx.stroke()
+            }
+        } else {
+            ctx.lineWidth = previewPath.width
+            ctx.beginPath()
+            ctx.moveTo(pts[0].x * canvas.width, pts[0].y * canvas.height)
+            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x * canvas.width, pts[i].y * canvas.height)
+            ctx.stroke()
+        }
+    }, [previewPath, width, height])
+
     return (
-        <canvas
+        <>
+          <canvas
             ref={canvasRef}
             className={className}
             width={width}
@@ -824,6 +904,15 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerCancel}
-        />
+          />
+          <canvas
+            ref={previewCanvasRef}
+            className={className}
+            width={width}
+            height={height}
+            aria-hidden="true"
+            style={{ ...style, pointerEvents: 'none', opacity: previewPath?.opacity ?? 1 }}
+          />
+        </>
     )
 })

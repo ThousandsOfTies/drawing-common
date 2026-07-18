@@ -75,11 +75,16 @@ export const isScratchPattern = (path: DrawingPath): boolean => {
 import { useRef, useState } from 'react'
 import type { DrawingPath, DrawingCanvasHandle } from '../types'
 
+// 速度がまだ測れない描き始めと、PointerUp直前の描き終わりに使う細さ。
+const BRUSH_ENDPOINT_FACTOR = 0.08
+const BRUSH_TAPER_DISTANCE_MULTIPLIER = 2
+
 interface UseDrawingOptions {
   width: number
   color: string
   opacity?: number
   style?: 'pencil' | 'marker' | 'brush'
+  onPathPreview?: (path: DrawingPath | null) => void
   onPathComplete?: (path: DrawingPath) => void
   // スクラッチ完了時のコールバック（交差したパスを削除するため）
   onScratchComplete?: (scratchPath: DrawingPath) => void
@@ -99,19 +104,43 @@ export const useDrawing = (
   // バッチ間で最後の描画座標を保持（丸め誤差回避）
   const lastCanvasCoordRef = useRef<{ x: number, y: number } | null>(null)
   const lastWidthSampleRef = useRef<{ x: number, y: number, time: number } | null>(null)
+  const smoothedSpeedRef = useRef<number | null>(null)
+  const brushSpeedSampleCountRef = useRef(0)
 
-  const getPointWidth = (x: number, y: number, pressure?: number) => {
+  const getPointWidth = (x: number, y: number, pressure?: number, time = performance.now()) => {
     if (options.style === 'pencil') return Math.max(1, options.width * 0.7)
     if (options.style === 'marker') return options.width * 1.15
     if (options.style !== 'brush') return options.width
-    const now = performance.now()
     const previous = lastWidthSampleRef.current
-    const speed = previous ? Math.hypot(x - previous.x, y - previous.y) / Math.max(1, now - previous.time) : 0
-    lastWidthSampleRef.current = { x, y, time: now }
+
+    // 最初の点は速度が測れない。0px/ms（最も太い）として扱わず、
+    // 描き始めだけ不自然に太くなるのを避ける。
+    if (!previous) {
+      lastWidthSampleRef.current = { x, y, time }
+      smoothedSpeedRef.current = null
+      brushSpeedSampleCountRef.current = 0
+      return Math.max(1, options.width * BRUSH_ENDPOINT_FACTOR)
+    }
+
+    const rawSpeed = Math.hypot(x - previous.x, y - previous.y) / Math.max(1, time - previous.time)
+    // イベント間隔や coalesced event のばらつきで線幅が跳ねないように平滑化する。
+    const speed = smoothedSpeedRef.current === null
+      ? rawSpeed
+      : smoothedSpeedRef.current * 0.65 + rawSpeed * 0.35
+    lastWidthSampleRef.current = { x, y, time }
+    smoothedSpeedRef.current = speed
+
+    // 最初の線分は丸い lineCap が開始位置まで広がるため、速度が測れても
+    // すぐに太くしない。短い助走を細く保ち、描き始めの丸を抑える。
+    if (brushSpeedSampleCountRef.current++ === 0) {
+      return Math.max(1, options.width * BRUSH_ENDPOINT_FACTOR)
+    }
+
     // 筆圧が使える端末では優先し、マウス・指では速度で自然な強弱を付ける。
     const factor = pressure && pressure > 0 && pressure < 1
       ? 0.3 + pressure * 0.9
-      : Math.max(0.35, Math.min(1.25, 1.15 - speed * 0.12))
+      // ゆっくり動かしたときは設定幅より太く、速く動かしたときは細くする。
+      : Math.max(0.4, Math.min(1.3, 1.3 - speed * 0.18))
     return Math.max(1, options.width * factor)
   }
 
@@ -122,14 +151,51 @@ export const useDrawing = (
     return current.getSize()
   }
 
+  const createDisplayPath = (source: DrawingPath, size: { width: number, height: number }): DrawingPath => {
+    const path: DrawingPath = { ...source, points: source.points.map(point => ({ ...point })) }
+    if (path.style !== 'brush') return path
+
+    const endpointWidth = Math.max(1, options.width * BRUSH_ENDPOINT_FACTOR)
+    const taperDistance = Math.max(options.width * BRUSH_TAPER_DISTANCE_MULTIPLIER, 24)
+    const originalWidths = path.points.map(point => point.width ?? options.width)
+    const taperProgress = path.points.map(() => 1)
+    const applyTaperFrom = (startIndex: number, step: 1 | -1) => {
+      let distance = 0
+      for (let i = startIndex; i >= 0 && i < path.points.length; i += step) {
+        if (i !== startIndex) {
+          const previous = path.points[i - step]
+          const current = path.points[i]
+          distance += Math.hypot(
+            (current.x - previous.x) * size.width,
+            (current.y - previous.y) * size.height
+          )
+        }
+        taperProgress[i] = Math.min(taperProgress[i], Math.min(1, distance / taperDistance))
+        if (distance >= taperDistance) break
+      }
+    }
+    applyTaperFrom(0, 1)
+    applyTaperFrom(path.points.length - 1, -1)
+    path.points.forEach((point, index) => {
+      point.width = endpointWidth + (originalWidths[index] - endpointWidth) * taperProgress[index]
+    })
+    return path
+  }
+
+  const updatePreview = (size: { width: number, height: number }) => {
+    if (!options.onPathPreview || !currentPathRef.current) return
+    options.onPathPreview(createDisplayPath(currentPathRef.current, size))
+  }
+
   // ヘルパー：描画実行
   const executeDraw = (points: { x: number, y: number }[], width = options.width) => {
+    if (options.onPathPreview) return
     const current = canvasRef.current
     if (!current) return
     current.drawStroke(points, options.color, width, options.opacity)
   }
 
-  const startDrawing = (x: number, y: number, pressure?: number) => {
+  const startDrawing = (x: number, y: number, pressure?: number, time?: number) => {
     const size = getCanvasSize()
     if (!size) return
 
@@ -140,7 +206,7 @@ export const useDrawing = (
     const normalizedY = y / size.height
 
     currentPathRef.current = {
-      points: [{ x: normalizedX, y: normalizedY, width: getPointWidth(x, y, pressure) }],
+      points: [{ x: normalizedX, y: normalizedY, width: getPointWidth(x, y, pressure, time) }],
       color: options.color,
       width: options.width,
       opacity: options.opacity,
@@ -149,6 +215,7 @@ export const useDrawing = (
 
     // 最初の点のcanvas座標を保存
     lastCanvasCoordRef.current = { x, y }
+    updatePreview(size)
   }
 
   const draw = (x: number, y: number) => {
@@ -160,7 +227,7 @@ export const useDrawing = (
     const normalizedY = y / size.height
 
     // 今回追加するポイントのリスト
-    const newPoints: { x: number, y: number }[] = []
+    const newPoints: { x: number, y: number, width?: number }[] = []
 
     // マウス等の低サンプリングレート入力のために補間を行う
     const path = currentPathRef.current
@@ -180,14 +247,18 @@ export const useDrawing = (
           const t = i / steps
           newPoints.push({
             x: lastPoint.x + dx * t,
-            y: lastPoint.y + dy * t
+            y: lastPoint.y + dy * t,
+            width: getPointWidth(
+              (lastPoint.x + dx * t) * size.width,
+              (lastPoint.y + dy * t) * size.height
+            )
           })
         }
       }
     }
 
     // 実際のタッチ/マウス位置を追加
-    newPoints.push({ x: normalizedX, y: normalizedY })
+    newPoints.push({ x: normalizedX, y: normalizedY, width: getPointWidth(x, y) })
 
     // ポイントを順次追加
     for (const point of newPoints) {
@@ -196,16 +267,20 @@ export const useDrawing = (
 
     let prevX = path.points[path.points.length - 1 - newPoints.length].x * size.width
     let prevY = path.points[path.points.length - 1 - newPoints.length].y * size.height
+    let previousWidth = path.points[path.points.length - 1 - newPoints.length].width ?? options.width
 
     for (const point of newPoints) {
       const currX = point.x * size.width
       const currY = point.y * size.height
+      const currentWidth = point.width ?? options.width
 
-      executeDraw([{ x: prevX, y: prevY }, { x: currX, y: currY }], getPointWidth(currX, currY))
+      executeDraw([{ x: prevX, y: prevY }, { x: currX, y: currY }], (previousWidth + currentWidth) / 2)
 
       prevX = currX
       prevY = currY
+      previousWidth = currentWidth
     }
+    updatePreview(size)
   }
 
   /**
@@ -213,7 +288,7 @@ export const useDrawing = (
    * シンプルな順次描画: 前回の最後の点 → 新しい点たちを順番に接続
    * @param points 正規化されていない座標の配列 (canvas width/height で割る前)
    */
-  const drawBatch = (points: Array<{ x: number, y: number, pressure?: number }>) => {
+  const drawBatch = (points: Array<{ x: number, y: number, pressure?: number, time?: number }>) => {
     const size = getCanvasSize()
     const path = currentPathRef.current
 
@@ -233,7 +308,7 @@ export const useDrawing = (
       path.points.push({
         x: p.x / size.width,
         y: p.y / size.height,
-        width: getPointWidth(p.x, p.y, p.pressure)
+        width: getPointWidth(p.x, p.y, p.pressure, p.time)
       })
     })
 
@@ -247,8 +322,12 @@ export const useDrawing = (
 
     // 各入力点の幅で直ちに線分を描く。リリース後の再描画を待たない。
     for (let i = 1; i < localPoints.length; i++) {
-      const pointIndex = Math.max(0, path.points.length - points.length + i - 1)
-      executeDraw([localPoints[i - 1], localPoints[i]], path.points[pointIndex]?.width ?? options.width)
+      const currentPointIndex = Math.max(0, path.points.length - points.length + i - 1)
+      const previousPointIndex = Math.max(0, currentPointIndex - 1)
+      const previousWidth = path.points[previousPointIndex]?.width ?? options.width
+      const currentWidth = path.points[currentPointIndex]?.width ?? options.width
+      // 確定後の再描画と同じく、線分の両端の平均幅で描画する。
+      executeDraw([localPoints[i - 1], localPoints[i]], (previousWidth + currentWidth) / 2)
     }
 
     // 最後の点を保存（次のバッチとの接続用）
@@ -258,30 +337,56 @@ export const useDrawing = (
         y: points[points.length - 1].y
       }
     }
+    updatePreview(size)
   }
 
   const stopDrawing = () => {
     if (isDrawing && currentPathRef.current) {
       const newPath = currentPathRef.current
+      const widthsBeforeEndpointTaper = newPath.points.map(point => point.width ?? options.width)
 
-      // Scratch pattern detection re-enabled
-      if (isScratchPattern(newPath)) {
-        // スクラッチの場合はonScratchCompleteを呼び出す
-        if (options.onScratchComplete) {
-          options.onScratchComplete(newPath)
-        }
-        // スクラッチ自体は保存しない（onPathCompleteは呼ばない）
-      } else {
-        // 通常の描画の場合
-        if (options.onPathComplete) {
-          options.onPathComplete(newPath)
-        }
+      const size = getCanvasSize()
+      if (size) newPath.points = createDisplayPath(newPath, size).points
+
+      // 開発時の描画診断用。速度由来の幅と端点補正のどちらが効いているかを確認する。
+      if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+        const widths = newPath.points.map(point => point.width ?? options.width)
+        const middle = Math.floor(widths.length / 2)
+        console.info('[CopiCopi stroke]', {
+          style: newPath.style,
+          opacity: newPath.opacity,
+          baseWidth: options.width,
+          pointCount: widths.length,
+          beforeTaper: {
+            start: widthsBeforeEndpointTaper[0],
+            middle: widthsBeforeEndpointTaper[Math.floor(widthsBeforeEndpointTaper.length / 2)],
+            end: widthsBeforeEndpointTaper[widthsBeforeEndpointTaper.length - 1]
+          },
+          final: { start: widths[0], middle: widths[middle], end: widths[widths.length - 1] },
+          range: { min: Math.min(...widths), max: Math.max(...widths) }
+        })
       }
+
+      const isScratch = isScratchPattern(newPath)
 
       currentPathRef.current = null
       lastCanvasCoordRef.current = null  // CRITICAL: Reset for next stroke
       lastWidthSampleRef.current = null
+      smoothedSpeedRef.current = null
+      brushSpeedSampleCountRef.current = 0
       setIsDrawing(false)
+      options.onPathPreview?.(null)
+
+      // 描画中のプレビューを先に消してから確定パスを追加する。
+      // 同じレンダリングサイクルで追加すると、太いプレビューの上に最終線を
+      // 重ねてしまい、保存データより太く見えることがある。
+      window.setTimeout(() => {
+        if (isScratch) {
+          options.onScratchComplete?.(newPath)
+        } else {
+          options.onPathComplete?.(newPath)
+        }
+      }, 0)
     }
   }
 
@@ -294,7 +399,10 @@ export const useDrawing = (
 
     lastCanvasCoordRef.current = null  // CRITICAL: Reset for next stroke
     lastWidthSampleRef.current = null
+    smoothedSpeedRef.current = null
+    brushSpeedSampleCountRef.current = 0
     setIsDrawing(false)
+    options.onPathPreview?.(null)
   }
 
   return {
