@@ -72,7 +72,7 @@ export const isScratchPattern = (path: DrawingPath): boolean => {
 }
 
 // useDrawing.ts
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { DrawingPath, DrawingCanvasHandle } from '../types'
 
 // 速度がまだ測れない描き始めと、PointerUp直前の描き終わりに使う細さ。
@@ -106,6 +106,8 @@ export const useDrawing = (
   const lastWidthSampleRef = useRef<{ x: number, y: number, time: number } | null>(null)
   const smoothedSpeedRef = useRef<number | null>(null)
   const brushSpeedSampleCountRef = useRef(0)
+  const previewAnimationFrameRef = useRef<number | null>(null)
+  const pendingPreviewSizeRef = useRef<{ width: number, height: number } | null>(null)
 
   const getPointWidth = (x: number, y: number, pressure?: number, time = performance.now()) => {
     if (options.style === 'pencil') return Math.max(1, options.width * 0.7)
@@ -184,8 +186,32 @@ export const useDrawing = (
 
   const updatePreview = (size: { width: number, height: number }) => {
     if (!options.onPathPreview || !currentPathRef.current) return
-    options.onPathPreview(createDisplayPath(currentPathRef.current, size))
+    pendingPreviewSizeRef.current = size
+    // Coalesced Eventsが一度に多数届いても、React更新とCanvas全面再描画は
+    // 表示フレームにつき1回だけにする。最新の全点は次フレームで反映される。
+    if (previewAnimationFrameRef.current !== null) return
+    previewAnimationFrameRef.current = requestAnimationFrame(() => {
+      previewAnimationFrameRef.current = null
+      const path = currentPathRef.current
+      const previewSize = pendingPreviewSizeRef.current
+      if (path && previewSize) options.onPathPreview?.(createDisplayPath(path, previewSize))
+    })
   }
+
+  const clearPreview = () => {
+    if (previewAnimationFrameRef.current !== null) {
+      cancelAnimationFrame(previewAnimationFrameRef.current)
+      previewAnimationFrameRef.current = null
+    }
+    pendingPreviewSizeRef.current = null
+    options.onPathPreview?.(null)
+  }
+
+  useEffect(() => () => {
+    if (previewAnimationFrameRef.current !== null) {
+      cancelAnimationFrame(previewAnimationFrameRef.current)
+    }
+  }, [])
 
   // ヘルパー：描画実行
   const executeDraw = (points: { x: number, y: number }[], width = options.width) => {
@@ -375,18 +401,16 @@ export const useDrawing = (
       smoothedSpeedRef.current = null
       brushSpeedSampleCountRef.current = 0
       setIsDrawing(false)
-      options.onPathPreview?.(null)
 
-      // 描画中のプレビューを先に消してから確定パスを追加する。
-      // 同じレンダリングサイクルで追加すると、太いプレビューの上に最終線を
-      // 重ねてしまい、保存データより太く見えることがある。
-      window.setTimeout(() => {
-        if (isScratch) {
-          options.onScratchComplete?.(newPath)
-        } else {
-          options.onPathComplete?.(newPath)
-        }
-      }, 0)
+      // ライブ線と確定線は同じ補間を使うため、Reactの同一更新内で
+      // 「確定パス追加」と「プレビュー消去」を行う。一度プレビューだけを
+      // 消していた旧処理の空白フレーム（リリース時のフラッシュ）をなくす。
+      if (isScratch) {
+        options.onScratchComplete?.(newPath)
+      } else {
+        options.onPathComplete?.(newPath)
+      }
+      clearPreview()
     }
   }
 
@@ -402,7 +426,7 @@ export const useDrawing = (
     smoothedSpeedRef.current = null
     brushSpeedSampleCountRef.current = 0
     setIsDrawing(false)
-    options.onPathPreview?.(null)
+    clearPreview()
   }
 
   return {

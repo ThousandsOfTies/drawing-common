@@ -932,7 +932,20 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
             ctx.lineWidth = previewPath.width * widthScale
             ctx.beginPath()
             ctx.moveTo(pts[0].x * canvas.width, pts[0].y * canvas.height)
-            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x * canvas.width, pts[i].y * canvas.height)
+            // 確定後の再描画と同じ二次ベジェ補間をリアルタイム表示にも使う。
+            // 入力点を単純連結していたため、描画中だけ折れ線に見えていた。
+            for (let i = 1; i < pts.length - 1; i++) {
+                const current = pts[i]
+                const next = pts[i + 1]
+                ctx.quadraticCurveTo(
+                    current.x * canvas.width,
+                    current.y * canvas.height,
+                    (current.x + next.x) / 2 * canvas.width,
+                    (current.y + next.y) / 2 * canvas.height
+                )
+            }
+            const last = pts[pts.length - 1]
+            ctx.lineTo(last.x * canvas.width, last.y * canvas.height)
             ctx.stroke()
         }
     }, [previewPath, width, height, coordinateWidth, coordinateHeight])
