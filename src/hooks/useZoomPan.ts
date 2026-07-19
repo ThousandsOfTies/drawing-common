@@ -37,8 +37,12 @@ export const useZoomPan = (
 
     // PDFの表示サイズ（ズーム適用後）
     const zoomValue = currentZoom ?? zoom
-    const displayWidth = canvas.width * zoomValue
-    const displayHeight = canvas.height * zoomValue
+    // Adaptive rendering can use a smaller backing bitmap while preserving the
+    // legacy logical layout size through CSS dimensions.
+    const contentWidth = canvas.clientWidth || canvas.width
+    const contentHeight = canvas.clientHeight || canvas.height
+    const displayWidth = contentWidth * zoomValue
+    const displayHeight = contentHeight * zoomValue
 
     // コンテナのサイズ
     const containerWidth = container.clientWidth
@@ -192,12 +196,14 @@ export const useZoomPan = (
     const canvas = canvasRef.current
 
     // 0除算防止
-    if (canvas.width === 0 || canvas.height === 0) return minFitZoom
+    const contentWidth = canvas.clientWidth || canvas.width
+    const contentHeight = canvas.clientHeight || canvas.height
+    if (contentWidth === 0 || contentHeight === 0) return minFitZoom
 
     // マージン考慮（任意、ここではぴったり合わせるためマージンなし、あるいは定数定義）
     // fitToScreen関数ではMARGIN=10を使っているが、最小リミットとしては0マージンで計算
-    const scaleX = container.clientWidth / canvas.width
-    const scaleY = container.clientHeight / canvas.height
+    const scaleX = container.clientWidth / contentWidth
+    const scaleY = container.clientHeight / contentHeight
 
     return Math.min(scaleX, scaleY)
   }, [containerRef, canvasRef, minFitZoom])
@@ -292,4 +298,3 @@ export const useZoomPan = (
     getFitToScreenZoom // 追加エクスポート
   }
 }
-

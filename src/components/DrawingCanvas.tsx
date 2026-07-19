@@ -15,6 +15,9 @@ const ICON_SVG = {
 export interface DrawingCanvasProps {
     width?: number
     height?: number
+    /** Stable logical coordinate size when the backing bitmap is rendered at another resolution. */
+    coordinateWidth?: number
+    coordinateHeight?: number
     className?: string
     style?: React.CSSProperties
 
@@ -52,6 +55,8 @@ export interface DrawingCanvasProps {
 export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(({
     width,
     height,
+    coordinateWidth,
+    coordinateHeight,
     className,
     style,
     tool,
@@ -82,6 +87,18 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
     // ストロークごとに巨大な canvas を生成しない。
     const transparencyLayerRef = useRef<HTMLCanvasElement | null>(null)
     const wasDrawingExternalRef = useRef(false)
+    const getCoordinateSize = () => {
+        const canvas = canvasRef.current
+        if (!canvas) return null
+        return {
+            width: coordinateWidth || canvas.width,
+            height: coordinateHeight || canvas.height,
+        }
+    }
+    const getBitmapScale = (canvas: HTMLCanvasElement) => ({
+        x: canvas.width / Math.max(coordinateWidth || canvas.width, 1),
+        y: canvas.height / Math.max(coordinateHeight || canvas.height, 1),
+    })
 
     // 描画メソッドの実装
     const drawStroke = (points: { x: number, y: number }[], color: string, width: number, strokeOpacity = 1) => {
@@ -89,13 +106,15 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
         if (!canvas) return
         const ctx = canvas.getContext('2d')
         if (!ctx) return
+        const bitmapScale = getBitmapScale(canvas)
+        const widthScale = Math.min(bitmapScale.x, bitmapScale.y)
 
         ctx.save()
         ctx.lineCap = 'round'
         ctx.lineJoin = 'round'
         ctx.strokeStyle = color
         ctx.globalAlpha = strokeOpacity
-        ctx.lineWidth = width
+        ctx.lineWidth = width * widthScale
 
         if (points.length < 2) {
             ctx.restore()
@@ -104,17 +123,17 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
 
         ctx.beginPath()
         const start = points[0]
-        ctx.moveTo(start.x, start.y)
+        ctx.moveTo(start.x * bitmapScale.x, start.y * bitmapScale.y)
 
         for (let i = 1; i < points.length; i++) {
             const p = points[i]
-            ctx.lineTo(p.x, p.y)
+            ctx.lineTo(p.x * bitmapScale.x, p.y * bitmapScale.y)
         }
         ctx.stroke()
         ctx.restore()
     }
 
-    const fillAt = (x: number, y: number, color: string, fillOpacity = 1) => {
+    const fillAtBitmapPosition = (x: number, y: number, color: string, fillOpacity = 1) => {
         const canvas = canvasRef.current
         const ctx = canvas?.getContext('2d')
         if (!canvas || !ctx || x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) return
@@ -139,9 +158,16 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
         ctx.putImageData(image, 0, 0)
     }
 
+    const fillAt = (x: number, y: number, color: string, fillOpacity = 1) => {
+        const canvas = canvasRef.current
+        if (!canvas) return
+        const bitmapScale = getBitmapScale(canvas)
+        fillAtBitmapPosition(x * bitmapScale.x, y * bitmapScale.y, color, fillOpacity)
+    }
+
     // 親コンポーネントに内部のcanvas要素と描画メソッドを公開
     React.useImperativeHandle(ref, () => ({
-        getSize: () => canvasRef.current ? { width: canvasRef.current.width, height: canvasRef.current.height } : null,
+        getSize: getCoordinateSize,
         drawStroke,
         fillAt
     }))
@@ -150,7 +176,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
     // NOTE: DrawingCanvasHandleを実装したオブジェクトをRefとして渡す
     const internalHandleRef = {
         current: {
-            getSize: () => canvasRef.current ? { width: canvasRef.current.width, height: canvasRef.current.height } : null,
+            getSize: getCoordinateSize,
             drawStroke,
             fillAt
         }
@@ -237,6 +263,8 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
 
         const ctx = canvas.getContext('2d')
         if (!ctx) return
+        const bitmapScale = getBitmapScale(canvas)
+        const widthScale = Math.min(bitmapScale.x, bitmapScale.y)
 
         const wasDrawingExternal = wasDrawingExternalRef.current
         wasDrawingExternalRef.current = isDrawingExternal
@@ -291,7 +319,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
 
             if (path.kind === 'fill') {
                 const point = path.points[0]
-                if (point) fillAt(point.x * canvas.width, point.y * canvas.height, path.color, path.opacity ?? 1)
+                if (point) fillAtBitmapPosition(point.x * canvas.width, point.y * canvas.height, path.color, path.opacity ?? 1)
                 continue
             }
 
@@ -315,20 +343,20 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
             strokeCtx.lineJoin = 'round'
             strokeCtx.strokeStyle = isSelected ? '#3498db' : path.color
             strokeCtx.globalAlpha = 1
-            strokeCtx.lineWidth = path.width
+            strokeCtx.lineWidth = path.width * widthScale
 
             if (path.points.length > 0) {
                 const pts = path.points
                 if (pts.length === 1) {
                     // 1点の場合は点を描画
                     strokeCtx.beginPath()
-                    strokeCtx.arc(pts[0].x * canvas.width, pts[0].y * canvas.height, (pts[0].width ?? path.width) / 2, 0, Math.PI * 2)
+                    strokeCtx.arc(pts[0].x * canvas.width, pts[0].y * canvas.height, (pts[0].width ?? path.width) * widthScale / 2, 0, Math.PI * 2)
                     strokeCtx.fillStyle = strokeCtx.strokeStyle
                     strokeCtx.fill()
                 } else if (path.style === 'brush') {
                     for (let j = 1; j < pts.length; j++) {
                         strokeCtx.beginPath()
-                        strokeCtx.lineWidth = ((pts[j - 1].width ?? path.width) + (pts[j].width ?? path.width)) / 2
+                        strokeCtx.lineWidth = ((pts[j - 1].width ?? path.width) + (pts[j].width ?? path.width)) * widthScale / 2
                         strokeCtx.moveTo(pts[j - 1].x * canvas.width, pts[j - 1].y * canvas.height)
                         strokeCtx.lineTo(pts[j].x * canvas.width, pts[j].y * canvas.height)
                         strokeCtx.stroke()
@@ -369,7 +397,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
         if (lassoIdx >= 0 && lassoIdx < paths.length) {
             const lasso = paths[lassoIdx]
             ctx.strokeStyle = 'rgba(52, 152, 219, 0.7)'
-            ctx.lineWidth = lasso.width
+            ctx.lineWidth = lasso.width * widthScale
             ctx.setLineDash([6, 4])
             ctx.beginPath()
             if (lasso.points.length > 0) {
@@ -386,7 +414,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
         // 描画済みカウントを更新
         renderedPathCountRef.current = currentPathCount
 
-    }, [paths, width, height, selectionState, isDrawingExternal])
+    }, [paths, width, height, coordinateWidth, coordinateHeight, selectionState, isDrawingExternal])
 
     // タッチがスタイラスかどうか判定（指のみを弾くため）
     const isStylusTouch = (touch: React.Touch): boolean => {
@@ -852,6 +880,8 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
         if (!canvas) return
         const ctx = canvas.getContext('2d')
         if (!ctx) return
+        const bitmapScale = getBitmapScale(canvas)
+        const widthScale = Math.min(bitmapScale.x, bitmapScale.y)
         ctx.clearRect(0, 0, canvas.width, canvas.height)
         if (!previewPath?.points.length) return
 
@@ -864,7 +894,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
 
         if (pts.length === 1) {
             ctx.beginPath()
-            ctx.arc(pts[0].x * canvas.width, pts[0].y * canvas.height, (pts[0].width ?? previewPath.width) / 2, 0, Math.PI * 2)
+            ctx.arc(pts[0].x * canvas.width, pts[0].y * canvas.height, (pts[0].width ?? previewPath.width) * widthScale / 2, 0, Math.PI * 2)
             ctx.fill()
             return
         }
@@ -872,19 +902,19 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
         if (previewPath.style === 'brush') {
             for (let i = 1; i < pts.length; i++) {
                 ctx.beginPath()
-                ctx.lineWidth = ((pts[i - 1].width ?? previewPath.width) + (pts[i].width ?? previewPath.width)) / 2
+                ctx.lineWidth = ((pts[i - 1].width ?? previewPath.width) + (pts[i].width ?? previewPath.width)) * widthScale / 2
                 ctx.moveTo(pts[i - 1].x * canvas.width, pts[i - 1].y * canvas.height)
                 ctx.lineTo(pts[i].x * canvas.width, pts[i].y * canvas.height)
                 ctx.stroke()
             }
         } else {
-            ctx.lineWidth = previewPath.width
+            ctx.lineWidth = previewPath.width * widthScale
             ctx.beginPath()
             ctx.moveTo(pts[0].x * canvas.width, pts[0].y * canvas.height)
             for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x * canvas.width, pts[i].y * canvas.height)
             ctx.stroke()
         }
-    }, [previewPath, width, height])
+    }, [previewPath, width, height, coordinateWidth, coordinateHeight])
 
     return (
         <>
