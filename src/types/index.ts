@@ -19,6 +19,8 @@ export interface DrawingPath {
   points: DrawingPoint[]
   color: string
   width: number
+  /** Optional owning layer. Paths without one belong to the legacy default layer. */
+  layerId?: string
   /** 1 未満では、同じ場所に重ね描きするほど色が濃くなる。 */
   opacity?: number
   kind?: 'stroke' | 'fill'
