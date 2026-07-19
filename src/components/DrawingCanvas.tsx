@@ -326,19 +326,39 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
             // 選択されたパスは青でハイライト
             const isSelected = selectionState?.selectedIndices.includes(i)
             const pathOpacity = isSelected ? 1 : (path.opacity ?? 1)
+            if (path.points.length === 0) continue
             // 半透明ストロークは不透明なオフスクリーン層に描いてから一度だけ合成する。
             // これにより、同じストローク内の線分・丸い端部が重なっても濃くならない。
             const strokeLayer = pathOpacity < 1
                 ? (transparencyLayerRef.current ?? (transparencyLayerRef.current = document.createElement('canvas')))
                 : null
+            const pathWidths = path.points.map(point => point.width ?? path.width)
+            const maximumPathWidth = Math.max(path.width, ...pathWidths) * widthScale
+            const xs = path.points.map(point => point.x * canvas.width)
+            const ys = path.points.map(point => point.y * canvas.height)
+            const padding = maximumPathWidth / 2 + 2
+            const layerX = Math.max(0, Math.floor(Math.min(...xs) - padding))
+            const layerY = Math.max(0, Math.floor(Math.min(...ys) - padding))
+            const layerRight = Math.min(canvas.width, Math.ceil(Math.max(...xs) + padding))
+            const layerBottom = Math.min(canvas.height, Math.ceil(Math.max(...ys) + padding))
+            const layerWidth = Math.max(1, layerRight - layerX)
+            const layerHeight = Math.max(1, layerBottom - layerY)
             if (strokeLayer) {
-                if (strokeLayer.width !== canvas.width || strokeLayer.height !== canvas.height) {
-                    strokeLayer.width = canvas.width
-                    strokeLayer.height = canvas.height
+                // ページ全面ではなく、このストロークが占める矩形だけを確保する。
+                // iPadでは全面Canvasをストローク本数分クリア・合成するとメモリ帯域を
+                // 大きく消費するため、半透明ブラシの消去・Undo時に特に効く。
+                if (strokeLayer.width !== layerWidth || strokeLayer.height !== layerHeight) {
+                    strokeLayer.width = layerWidth
+                    strokeLayer.height = layerHeight
+                } else {
+                    strokeLayer.getContext('2d')?.clearRect(0, 0, layerWidth, layerHeight)
                 }
             }
             const strokeCtx = strokeLayer?.getContext('2d') ?? ctx
-            if (strokeLayer) strokeCtx.clearRect(0, 0, strokeLayer.width, strokeLayer.height)
+            if (strokeLayer) {
+                strokeCtx.save()
+                strokeCtx.translate(-layerX, -layerY)
+            }
             strokeCtx.lineCap = 'round'
             strokeCtx.lineJoin = 'round'
             strokeCtx.strokeStyle = isSelected ? '#3498db' : path.color
@@ -384,9 +404,10 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
             }
 
             if (strokeLayer) {
+                strokeCtx.restore()
                 ctx.save()
                 ctx.globalAlpha = pathOpacity
-                ctx.drawImage(strokeLayer, 0, 0)
+                ctx.drawImage(strokeLayer, layerX, layerY)
                 ctx.restore()
             }
         }
