@@ -2,13 +2,12 @@ import { useState, useEffect, useCallback } from 'react'
 
 export const useZoomPan = (
   containerRef: React.RefObject<HTMLDivElement>,
-  renderScale: number = 5.0,
-  minFitZoom: number = 1.0 / 5.0,
+  minFitZoom: number = 0.1,
   onResetToFit?: () => void,
   canvasRef?: React.RefObject<HTMLCanvasElement>
 ) => {
-  // プリレンダリング戦略: 初期zoom = 1/RENDER_SCALE（等倍表示）
-  const [zoom, setZoom] = useState(1.0 / renderScale)
+  // 論理座標はPDF原寸。初期フィット完了までは等倍で扱う。
+  const [zoom, setZoom] = useState(1.0)
   const [isPanning, setIsPanning] = useState(false)
   const [panStart, setPanStart] = useState({ x: 0, y: 0 })
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 })
@@ -37,8 +36,8 @@ export const useZoomPan = (
 
     // PDFの表示サイズ（ズーム適用後）
     const zoomValue = currentZoom ?? zoom
-    // Adaptive rendering can use a smaller backing bitmap while preserving the
-    // legacy logical layout size through CSS dimensions.
+    // CSS dimensions are the stable logical size. The backing bitmap may use a
+    // different resolution without affecting pan limits.
     const contentWidth = canvas.clientWidth || canvas.width
     const contentHeight = canvas.clientHeight || canvas.height
     const displayWidth = contentWidth * zoomValue
@@ -177,13 +176,10 @@ export const useZoomPan = (
   }, [containerRef, minFitZoom])
 
   const resetZoom = () => {
-    // プリレンダリング: リセットは等倍表示（1/RENDER_SCALE）に戻す
-    // もしcanvasRefがあればfitToScreenを呼ぶ方が良いが、引数が必要なので
-    // ここでは単純リセットか、onResetToFitコールバックに任せる
     if (onResetToFit) {
       onResetToFit()
     } else {
-      setZoom(1.0 / renderScale)
+      setZoom(1.0)
       setPanOffset({ x: 0, y: 0 })
     }
   }

@@ -482,8 +482,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
             return null
         }
 
-        // 視覚的なサイズと内部バッファサイズの比率を計算
-        // (高解像度ディスプレイやRENDER_SCALEによる拡大縮小を補正)
+        // 視覚的なサイズと高解像度bitmapの比率を計算
         const scaleX = canvas.width / rect.width
         const scaleY = canvas.height / rect.height
 
