@@ -73,7 +73,7 @@ export const isScratchPattern = (path: DrawingPath): boolean => {
 
 // useDrawing.ts
 import { useEffect, useRef, useState } from 'react'
-import type { DrawingPath, DrawingCanvasHandle } from '../types'
+import type { DrawingPath, DrawingCanvasHandle, StrokeStyle } from '../types'
 
 // 速度がまだ測れない描き始めと、PointerUp直前の描き終わりに使う細さ。
 const BRUSH_ENDPOINT_FACTOR = 0.08
@@ -83,7 +83,7 @@ interface UseDrawingOptions {
   width: number
   color: string
   opacity?: number
-  style?: 'pencil' | 'marker' | 'brush'
+  style?: StrokeStyle
   onPathPreview?: (path: DrawingPath | null) => void
   onPathComplete?: (path: DrawingPath) => void
   // スクラッチ完了時のコールバック（交差したパスを削除するため）

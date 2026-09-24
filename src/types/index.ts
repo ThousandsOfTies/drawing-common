@@ -3,6 +3,8 @@
  */
 export type ToolType = 'pen' | 'eraser' | 'selection'
 
+export type StrokeStyle = 'pencil' | 'marker' | 'brush' | 'calligraphy' | 'crayon'
+
 /**
  * 描画パスの点
  */
@@ -24,7 +26,7 @@ export interface DrawingPath {
   /** 1 未満では、同じ場所に重ね描きするほど色が濃くなる。 */
   opacity?: number
   kind?: 'stroke' | 'fill'
-  style?: 'pencil' | 'marker' | 'brush'
+  style?: StrokeStyle
 }
 
 // DrawingCanvasが外部公開する操作ハンドル

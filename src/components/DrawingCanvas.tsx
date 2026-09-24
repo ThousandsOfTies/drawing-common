@@ -1,7 +1,8 @@
 ﻿import React, { useRef, useEffect, useState } from 'react'
 import { useDrawing, doPathsIntersect } from '../hooks/useDrawing'
 import { useEraser } from '../hooks/useEraser'
-import { DrawingPath, DrawingPoint, SelectionState, DrawingCanvasHandle } from '../types'
+import { DrawingPath, DrawingPoint, SelectionState, DrawingCanvasHandle, StrokeStyle } from '../types'
+import { drawAdditionalStrokeStyle } from '../rendering/drawAdditionalStrokeStyle'
 
 // カーソルとアイコン用のSVG定義（icons.tsx準拠）
 const ICON_SVG = {
@@ -26,7 +27,7 @@ export interface DrawingCanvasProps {
     color: string
     size: number
     opacity?: number
-    strokeStyle?: 'pencil' | 'marker' | 'brush'
+    strokeStyle?: StrokeStyle
     eraserSize: number
     paths: DrawingPath[]
     previewPath?: DrawingPath | null
@@ -367,7 +368,13 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
 
             if (path.points.length > 0) {
                 const pts = path.points
-                if (pts.length === 1) {
+                if (drawAdditionalStrokeStyle(strokeCtx, path, {
+                    scaleX: canvas.width,
+                    scaleY: canvas.height,
+                    widthScale,
+                }, isSelected ? '#3498db' : path.color)) {
+                    // CopiCopi-specific styles share one renderer with the live preview and thumbnails.
+                } else if (pts.length === 1) {
                     // 1点の場合は点を描画
                     strokeCtx.beginPath()
                     strokeCtx.arc(pts[0].x * canvas.width, pts[0].y * canvas.height, (pts[0].width ?? path.width) * widthScale / 2, 0, Math.PI * 2)
@@ -911,6 +918,14 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
         ctx.strokeStyle = previewPath.color
         ctx.fillStyle = previewPath.color
         ctx.globalAlpha = 1
+
+        if (drawAdditionalStrokeStyle(ctx, previewPath, {
+            scaleX: canvas.width,
+            scaleY: canvas.height,
+            widthScale,
+        })) {
+            return
+        }
 
         if (pts.length === 1) {
             ctx.beginPath()

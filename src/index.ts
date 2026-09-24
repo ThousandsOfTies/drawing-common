@@ -1,5 +1,5 @@
 ﻿// Types
-export type { DrawingPath, DrawingPoint, DrawingConfig, DrawingHistory, ToolType, SelectionState, DrawingCanvasHandle } from './types'
+export type { DrawingPath, DrawingPoint, DrawingConfig, DrawingHistory, ToolType, StrokeStyle, SelectionState, DrawingCanvasHandle } from './types'
 
 // Hooks
 export { useDrawing, isScratchPattern, doPathsIntersect } from './hooks/useDrawing'
@@ -9,4 +9,4 @@ export { useLassoSelection } from './hooks/useLassoSelection'
 
 // Components
 export { DrawingCanvas, type DrawingCanvasProps } from './components/DrawingCanvas'
-
+export { drawAdditionalStrokeStyle } from './rendering/drawAdditionalStrokeStyle'
