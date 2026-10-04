@@ -1,10 +1,20 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+
+const FIT_MARGIN = 10
+const MAX_FIT_ZOOM = 2
+const MAX_WHEEL_ZOOM = 5
+
+interface ZoomPanOptions {
+  /** Includes sibling input overlays; the cursor still determines the active pane. */
+  wheelEventTargetRef?: React.RefObject<HTMLElement>
+}
 
 export const useZoomPan = (
   containerRef: React.RefObject<HTMLDivElement>,
   minFitZoom: number = 0.1,
   onResetToFit?: () => void,
-  canvasRef?: React.RefObject<HTMLCanvasElement>
+  canvasRef?: React.RefObject<HTMLCanvasElement>,
+  options?: ZoomPanOptions
 ) => {
   // 論理座標はPDF原寸。初期フィット完了までは等倍で扱う。
   const [zoom, setZoom] = useState(1.0)
@@ -14,6 +24,9 @@ export const useZoomPan = (
   const [overscroll, setOverscroll] = useState({ x: 0, y: 0 })
   const [isCtrlPressed, setIsCtrlPressed] = useState(false)
   const [lastWheelCursor, setLastWheelCursor] = useState<{ x: number; y: number } | null>(null)
+  const viewportRef = useRef({ zoom, panOffset })
+  viewportRef.current = { zoom, panOffset }
+  const wheelEventTargetRef = options?.wheelEventTargetRef
 
   // パン（移動）機能 - Ctrl+ドラッグで移動
   const startPanning = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -26,7 +39,7 @@ export const useZoomPan = (
 
   // パン範囲制限を適用する関数
   // 新仕様: 右移動時はPDFの左端が表示領域の右端まで、左移動時はPDFの右端が表示領域の左端まで
-  const applyPanLimit = (offset: { x: number; y: number }, currentZoom?: number): { x: number; y: number } => {
+  const applyPanLimit = useCallback((offset: { x: number; y: number }, currentZoom?: number): { x: number; y: number } => {
     if (!containerRef.current || !canvasRef?.current) {
       return offset
     }
@@ -35,7 +48,7 @@ export const useZoomPan = (
     const canvas = canvasRef.current
 
     // PDFの表示サイズ（ズーム適用後）
-    const zoomValue = currentZoom ?? zoom
+    const zoomValue = currentZoom ?? viewportRef.current.zoom
     // CSS dimensions are the stable logical size. The backing bitmap may use a
     // different resolution without affecting pan limits.
     const contentWidth = canvas.clientWidth || canvas.width
@@ -82,7 +95,7 @@ export const useZoomPan = (
     limitedY = Math.max(minY, Math.min(maxY, offset.y))
 
     return { x: limitedX, y: limitedY }
-  }
+  }, [containerRef, canvasRef])
 
 
   const doPanning = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -135,9 +148,8 @@ export const useZoomPan = (
     const containerH = overrideContainerHeight ?? containerRef.current.clientHeight
 
     // マージン考慮（上下左右 10px）
-    const MARGIN = 10
-    const availableW = containerW - (MARGIN * 2)
-    const availableH = containerH - (MARGIN * 2)
+    const availableW = containerW - (FIT_MARGIN * 2)
+    const availableH = containerH - (FIT_MARGIN * 2)
 
     // 最適なズームレベルを計算（画面に収まる最大サイズ）
     // 0除算防止
@@ -157,23 +169,24 @@ export const useZoomPan = (
     }
 
     // 最小・最大ズーム範囲の制限
-    const clampedZoom = Math.max(minFitZoom, Math.min(2.0, newZoom))
+    const clampedZoom = Math.max(minFitZoom, Math.min(MAX_FIT_ZOOM, newZoom))
 
     // センタリング or 左寄せ
     const displayW = contentWidth * clampedZoom
     const displayH = contentHeight * clampedZoom
 
     // alignLeftオプション: 左寄せ（スプリット表示時に便利）
-    const offsetX = options?.alignLeft ? MARGIN : (containerW - displayW) / 2
+    const offsetX = options?.alignLeft ? FIT_MARGIN : (containerW - displayW) / 2
     const offsetY = (containerH - displayH) / 2
 
     // 念のため制限を適用（計算値が正しいはずだが保険として）
     const limitedOffset = applyPanLimit({ x: offsetX, y: offsetY }, clampedZoom)
 
+    viewportRef.current = { zoom: clampedZoom, panOffset: limitedOffset }
     setOverscroll({ x: 0, y: 0 }) // オーバースクロールがあればリセット
     setZoom(clampedZoom)
     setPanOffset(limitedOffset)
-  }, [containerRef, minFitZoom])
+  }, [containerRef, minFitZoom, applyPanLimit])
 
   const resetZoom = () => {
     if (onResetToFit) {
@@ -196,60 +209,60 @@ export const useZoomPan = (
     const contentHeight = canvas.clientHeight || canvas.height
     if (contentWidth === 0 || contentHeight === 0) return minFitZoom
 
-    // マージン考慮（任意、ここではぴったり合わせるためマージンなし、あるいは定数定義）
-    // fitToScreen関数ではMARGIN=10を使っているが、最小リミットとしては0マージンで計算
-    const scaleX = container.clientWidth / contentWidth
-    const scaleY = container.clientHeight / contentHeight
+    // Keep the pinch fit limit consistent with the initial fit, including its margin.
+    const scaleX = (container.clientWidth - FIT_MARGIN * 2) / contentWidth
+    const scaleY = (container.clientHeight - FIT_MARGIN * 2) / contentHeight
 
-    return Math.min(scaleX, scaleY)
+    return Math.max(minFitZoom, Math.min(MAX_FIT_ZOOM, scaleX, scaleY))
   }, [containerRef, canvasRef, minFitZoom])
 
 
   // Ctrl+ホイールでズーム（マウスカーソルを中心に）
   useEffect(() => {
     const handleWheel = (e: WheelEvent) => {
-      // containerRef内でのホイールイベントのみ処理
-      if (!containerRef.current) return
-
+      if (e.defaultPrevented || (!e.ctrlKey && !e.metaKey) || !Number.isFinite(e.deltaY) || e.deltaY === 0) return
+      const container = containerRef.current
+      if (!container) return
+      const surface = wheelEventTargetRef?.current ?? container
       const target = e.target as Node
-      if (!containerRef.current.contains(target)) return
+      if (!surface.contains(target)) return
+      const containerRect = container.getBoundingClientRect()
+      if (e.clientX < containerRect.left || e.clientX >= containerRect.right
+        || e.clientY < containerRect.top || e.clientY >= containerRect.bottom) return
 
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault()
-        e.stopPropagation()
+      e.preventDefault()
+      e.stopPropagation()
 
-        const delta = e.deltaY > 0 ? -0.1 : 0.1
-        const oldZoom = zoom
+      const delta = e.deltaY > 0 ? -0.1 : 0.1
+      const { zoom: oldZoom, panOffset: oldPanOffset } = viewportRef.current
 
-        // 動的な最小倍率（Fitサイズ）を取得
-        const dynamicMinZoom = getFitToScreenZoom()
+      // Manual wheel zoom can shrink below fit. A fit-derived minimum could
+      // enlarge on zoom-out, or exceed the maximum for small PDF page sizes.
+      const newZoom = Math.min(MAX_WHEEL_ZOOM, Math.max(minFitZoom, oldZoom + delta))
+      const cursorX = e.clientX - containerRect.left
+      const cursorY = e.clientY - containerRect.top
+      setLastWheelCursor({ x: e.clientX, y: e.clientY })
 
-        // プリレンダリング: zoom範囲 dynamicMinZoom ～ 2.0 (1000%)
-        let newZoom = Math.max(dynamicMinZoom, Math.min(2.0, oldZoom + delta))
+      const scaleRatio = newZoom / oldZoom
+      const newPanOffsetX = cursorX - (cursorX - oldPanOffset.x) * scaleRatio
+      const newPanOffsetY = cursorY - (cursorY - oldPanOffset.y) * scaleRatio
 
-        // ... (省略なし) ...
-        const containerRect = containerRef.current.getBoundingClientRect()
-        const cursorX = e.clientX - containerRect.left
-        const cursorY = e.clientY - containerRect.top
-        setLastWheelCursor({ x: e.clientX, y: e.clientY })
+      // パン制限を適用（PDFが画面外に消えないように）
+      const limitedOffset = applyPanLimit({ x: newPanOffsetX, y: newPanOffsetY }, newZoom)
 
-        const scaleRatio = newZoom / oldZoom
-        const newPanOffsetX = cursorX - (cursorX - panOffset.x) * scaleRatio
-        const newPanOffsetY = cursorY - (cursorY - panOffset.y) * scaleRatio
-
-        // パン制限を適用（PDFが画面外に消えないように）
-        const limitedOffset = applyPanLimit({ x: newPanOffsetX, y: newPanOffsetY }, newZoom)
-
-        setZoom(newZoom)
-        setPanOffset(limitedOffset)
-      }
+      // Native wheel events can arrive before React commits the previous one.
+      viewportRef.current = { zoom: newZoom, panOffset: limitedOffset }
+      setOverscroll({ x: 0, y: 0 })
+      setZoom(newZoom)
+      setPanOffset(limitedOffset)
     }
 
+    // Page-turn listeners run first so Ctrl-wheel can cancel an unfinished turn.
     document.addEventListener('wheel', handleWheel, { passive: false })
     return () => {
       document.removeEventListener('wheel', handleWheel)
     }
-  }, [containerRef, zoom, panOffset, minFitZoom, onResetToFit, getFitToScreenZoom]) // getFitToScreenZoomを依存配列に追加
+  }, [containerRef, canvasRef, minFitZoom, wheelEventTargetRef, applyPanLimit])
 
   // Ctrlキーの状態を追跡
   useEffect(() => {
