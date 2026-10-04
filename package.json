@@ -15,7 +15,7 @@
     "dist"
   ],
   "scripts": {
-    "test": "node --test tests/zoom-pan.test.cjs",
+    "test": "node --test tests/zoom-pan.test.cjs tests/drawing-pointer.test.cjs",
     "build": "tsc",
     "dev": "tsc --watch",
     "clean": "rm -rf dist"

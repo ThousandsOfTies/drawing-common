@@ -1,4 +1,4 @@
-﻿import React, { useRef, useEffect, useState } from 'react'
+﻿import React, { useRef, useEffect } from 'react'
 import { useDrawing, doPathsIntersect } from '../hooks/useDrawing'
 import { useEraser } from '../hooks/useEraser'
 import { DrawingPath, DrawingPoint, SelectionState, DrawingCanvasHandle, StrokeStyle } from '../types'
@@ -192,7 +192,6 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
     // 2本指タップ検出用
     const twoFingerTapStartRef = useRef<{ time: number, dist: number } | null>(null)
     const lastPathTimeRef = useRef(0)
-    const isTouchActiveRef = useRef(false)
 
     // Pointer Events用：アクティブなポインタを追跡
     const activePointerIdRef = useRef<number | null>(null)
@@ -444,22 +443,6 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
 
     }, [paths, width, height, coordinateWidth, coordinateHeight, selectionState, isDrawingExternal])
 
-    // タッチがスタイラスかどうか判定（指のみを弾くため）
-    const isStylusTouch = (touch: React.Touch): boolean => {
-        // @ts-ignore: touchTypeは標準プロパティだがTypeScript定義に含まれない場合がある
-        return touch.touchType === 'stylus'
-    }
-
-    // タッチリストからスタイラスタッチを見つける
-    const findStylusTouch = (touches: React.TouchList): React.Touch | null => {
-        for (let i = 0; i < touches.length; i++) {
-            if (isStylusTouch(touches[i])) {
-                return touches[i]
-            }
-        }
-        return null
-    }
-
     // Canvas座標変換ヘルパー（PointerEvent / MouseEvent / TouchEvent対応）
     const toCanvasCoordinates = (
         e: React.MouseEvent | React.PointerEvent | React.TouchEvent,
@@ -499,18 +482,6 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
         }
     }
 
-    // ペン用ハンドラ
-    const handlePenDown = (e: React.MouseEvent | React.TouchEvent) => {
-        if (!isDrawing || !isInteractive) return
-        const coords = toCanvasCoordinates(e)
-        if (coords) hookStartDrawing(coords.x, coords.y)
-    }
-
-    const handlePenMove = (e: React.MouseEvent | React.TouchEvent) => {
-        if (!isDrawing || !isInteractive) return
-        const coords = toCanvasCoordinates(e)
-        if (coords) hookContinueDrawing(coords.x, coords.y)
-    }
 
     const handlePenUp = () => {
         if (!isDrawing || !isInteractive) return
@@ -558,181 +529,6 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
             x: coords.x / canvas.width,
             y: coords.y / canvas.height
         }
-    }
-
-    // 統合ハンドラ: マウス
-    const handleMouseDown = (e: React.MouseEvent) => {
-        // タッチ操作中はマウスイベントを無視
-        if (isTouchActiveRef.current) return
-
-        // 選択中の場合
-        if (hasSelection && isDrawing) {
-            const point = toNormalizedCoordinates(e)
-            if (!point) return
-
-            // バウンディングボックス内なら移動開始
-            const bb = selectionState?.boundingBox
-            if (bb && point.x >= bb.minX && point.x <= bb.maxX && point.y >= bb.minY && point.y <= bb.maxY) {
-                onSelectionDragStart?.(point)
-                return
-            }
-
-            // バウンディングボックス外なら選択解除
-            onSelectionClear?.()
-            return
-        }
-
-        if (isDrawing) handlePenDown(e)
-        else if (isErasing) handleEraserDown(e)
-    }
-
-    const handleMouseMove = (e: React.MouseEvent) => {
-        if (isTouchActiveRef.current) return
-
-        // 選択をドラッグ中
-        if (selectionState?.isDragging) {
-            const point = toNormalizedCoordinates(e)
-            if (point) onSelectionDrag?.(point)
-            return
-        }
-
-        if (isDrawing) handlePenMove(e)
-        else if (isErasing) handleEraserMove(e)
-    }
-
-    const handleMouseUp = (e: React.MouseEvent) => {
-        // 選択ドラッグ終了
-        if (selectionState?.isDragging) {
-            onSelectionDragEnd?.()
-            return
-        }
-
-        if (isDrawing) handlePenUp()
-        else if (isErasing) handleEraserUp()
-    }
-
-    const handleMouseLeave = (e: React.MouseEvent) => {
-        // 画面外に出たときは描画終了
-        if (selectionState?.isDragging) {
-            onSelectionDragEnd?.()
-            return
-        }
-        if (isDrawing) handlePenUp()
-        else if (isErasing) handleEraserUp()
-    }
-
-    // 統合ハンドラ: タッチ
-    const handleTouchStart = (e: React.TouchEvent) => {
-        isTouchActiveRef.current = true
-
-        // 2本指タップUndo検出
-        if (e.touches.length === 2) {
-            const t1 = e.touches[0]
-            const t2 = e.touches[1]
-            const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY)
-            twoFingerTapStartRef.current = {
-                time: Date.now(),
-                dist: dist
-            }
-            return // 描画はしない
-        }
-
-        // パームリジェクション: stylusOnlyかつ指の場合は無視
-        // マルチタッチ対応：複数のタッチからスタイラスを探す
-        let targetTouch: React.Touch | null = null
-        if (stylusOnly && isDrawing && e.touches.length > 0) {
-            targetTouch = findStylusTouch(e.touches)
-            if (!targetTouch) {
-                return // スタイラスが見つからない場合は無視
-            }
-        } else if (e.touches.length > 0) {
-            // stylusOnlyが無効な場合は最初のタッチを使用
-            targetTouch = e.touches[0]
-        }
-
-        // 選択中の場合
-        if (hasSelection && isDrawing) {
-            const point = toNormalizedCoordinates(e)
-            if (!point) return
-
-            // バウンディングボックス内なら移動開始
-            const bb = selectionState?.boundingBox
-            if (bb && point.x >= bb.minX && point.x <= bb.maxX && point.y >= bb.minY && point.y <= bb.maxY) {
-                onSelectionDragStart?.(point)
-                return
-            }
-
-            // バウンディングボックス外なら選択解除
-            onSelectionClear?.()
-            return
-        }
-
-        if (isDrawing) {
-            const coords = toCanvasCoordinates(e, targetTouch)
-            if (coords) hookStartDrawing(coords.x, coords.y)
-        } else if (isErasing) {
-            handleEraserDown(e)
-        }
-    }
-
-    const handleTouchMove = (e: React.TouchEvent) => {
-        // パームリジェクション: マルチタッチ対応：複数のタッチからスタイラスを探す
-        let targetTouch: React.Touch | null = null
-        if (stylusOnly && isDrawing && e.touches.length > 0) {
-            targetTouch = findStylusTouch(e.touches)
-            if (!targetTouch) {
-                return // スタイラスが見つからない場合は無視
-            }
-        } else if (e.touches.length > 0) {
-            targetTouch = e.touches[0]
-        }
-
-        // 選択をドラッグ中
-        if (selectionState?.isDragging) {
-            const point = toNormalizedCoordinates(e)
-            if (point) onSelectionDrag?.(point)
-            return
-        }
-
-        if (isDrawing) {
-            const coords = toCanvasCoordinates(e, targetTouch)
-            if (coords) hookContinueDrawing(coords.x, coords.y)
-        } else if (isErasing) {
-            handleEraserMove(e)
-        }
-    }
-
-    const handleTouchEnd = (e: React.TouchEvent) => {
-        // 重複防止フラグ解除（しない：一度タッチ操作をしたらマウスは永続的に無視）
-        // setTimeout(() => isTouchActiveRef.current = false, 500)
-
-        // 選択ドラッグ終了
-        if (selectionState?.isDragging) {
-            onSelectionDragEnd?.()
-            return
-        }
-
-        // 2本指タップUndo判定
-        if (twoFingerTapStartRef.current && onUndo) {
-            // 指が離れたタイミング
-            const now = Date.now()
-            const diff = now - twoFingerTapStartRef.current.time
-
-            // 300ms以内ならUndoとみなす
-            // 距離変化チェックは touchmove を追跡する必要があるが、簡易的に時間だけでも十分実用的
-            // もし移動していたら touchmove でスクロールなどが走っているはず
-            if (diff < 300) {
-                // 2本とも離れたか、あるいは1本離れた時点で発火
-                onUndo()
-                twoFingerTapStartRef.current = null
-                return
-            }
-            // 時間切れならリセット
-            twoFingerTapStartRef.current = null
-        }
-
-        if (isDrawing) handlePenUp()
-        else if (isErasing) handleEraserUp()
     }
 
     // Pointer Event handlers (優先使用 - タッチとペンを正しく区別)
