@@ -10,3 +10,5 @@ export { useLassoSelection } from './hooks/useLassoSelection'
 // Components
 export { DrawingCanvas, type DrawingCanvasProps } from './components/DrawingCanvas'
 export { drawAdditionalStrokeStyle } from './rendering/drawAdditionalStrokeStyle'
+export { CanvasUndoHistory } from './history/CanvasUndoHistory'
+export { zoomAtPoint, touchPair, pinchViewport, type Point, type Viewport, type PinchGesture } from './geometry/viewport'
