@@ -1,62 +1,33 @@
 # @thousands-of-ties/drawing-common
 
-共通の描画ツール・コンポーネントライブラリ
+TutoTuto・DoriDori・CopiCopiで使う、Canvas描画の共通React・TypeScriptライブラリです。
 
-## Features
+## 主な機能
 
-- ✅ Canvas描画機能（ペン）
-- ✅ スクラッチ消しゴム機能
-- ✅ Apple Pencil対応
-- ✅ 正規化座標（レスポンシブ対応）
-- ✅ TypeScript完全対応
+- ペン・消しゴム・投げ縄選択、描画キャンバスとポインター操作。
+- ズーム・パン・ピンチの座標計算。
+- 画素の差分を利用する `CanvasUndoHistory` と、描画に対応する状態のUndo。
 
-## Installation
+描画結果の保存、アプリ固有の画材・レイヤー・背景などは呼び出し元で管理します。
 
-```bash
-npm install @thousands-of-ties/drawing-common
-```
+## 利用方法
 
-## Usage
+各メタリポジトリがGitサブモジュールとしてコミットを固定します。3アプリはVite・TypeScriptのエイリアスで、兄弟ディレクトリの `src` を参照します。
 
 ```typescript
-import { useDrawing, type DrawingPath } from '@thousands-of-ties/drawing-common'
-
-function MyComponent() {
-  const {
-    drawingPaths,
-    isCurrentlyDrawing,
-    startDrawing,
-    continueDrawing,
-    stopDrawing,
-    redrawPaths
-  } = useDrawing(pageNum)
-
-  // Canvas描画処理
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-
-    const rect = canvas.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-
-    startDrawing(canvas, x, y, '#000000', 2)
-  }
-
-  return <canvas ref={canvasRef} onMouseDown={handleMouseDown} />
-}
+import { DrawingCanvas, CanvasUndoHistory } from '@thousands-of-ties/drawing-common'
 ```
 
-## CanvasのUndoと座標計算
+公開APIは [src/index.ts](src/index.ts)、引数や型は各実装を参照してください。
 
-`CanvasUndoHistory<T>` は描画操作の直前に `push(canvas, state)` で保存し、`undo(canvas)` で画素と対応するメタデータを復元します。最後の画像1枚と、それ以前の画像との差分を保持するため、小さな筆跡や文字だけの編集で画像全体のバッファが増えません。戻せる件数に上限は設けません。広い範囲が変わった場合は画像全体を逆差分として保持するので、常に一定のメモリ量になる方式ではありません。
+## 開発・検証
 
-`state` は呼び出し元が不変のスナップショットとして渡します。背景や文字の描画は呼び出し元が管理します。新しい問題を開くときは `clear()` で履歴を解放します。IndexedDBの保存形式は扱いません。`byteLength` は保持する画素・差分位置の配列のバイト数で、ブラウザ全体のメモリ使用量ではありません。
+```bash
+npm install
+npm test
+npm run build
+```
 
-`zoomAtPoint`、`touchPair`、`pinchViewport` は、ホイールやピンチ操作の座標計算を共有する関数です。対象の画面やペインの選択、イベントの受付は呼び出し元が管理します。
+変更時は3アプリの型チェック・ビルドで互換性も確認し、このリポジトリをcommit・pushしてから各メタのgitlinkを更新します。
 
-`npm test` で描画・拡大縮小・画素とメタデータのUndoを検証し、`npm run build` で型と公開ファイルを確認します。
-
-## License
-
-MIT
+ライセンス: MIT
