@@ -7,6 +7,7 @@ TutoTuto・DoriDori・CopiCopiで使う、Canvas描画の共通React・TypeScrip
 - ペン・消しゴム・投げ縄選択、描画キャンバスとポインター操作。
 - ズーム・パン・ピンチの座標計算。
 - 画素の差分を利用する `CanvasUndoHistory` と、描画に対応する状態のUndo。
+- PDF・解答画面の入力を扱う `useStrokeInput`。ペン・マウス・Touchの識別、開始と終了、重複する入力点を共通で管理する。
 
 描画結果の保存、アプリ固有の画材・レイヤー・背景などは呼び出し元で管理します。
 

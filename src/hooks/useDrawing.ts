@@ -246,7 +246,7 @@ export const useDrawing = (
 
   const draw = (x: number, y: number) => {
     const size = getCanvasSize()
-    if (!isDrawing || !currentPathRef.current || !size) return
+    if (!currentPathRef.current || !size) return
 
     // 正規化
     const normalizedX = x / size.width
@@ -318,16 +318,7 @@ export const useDrawing = (
     const size = getCanvasSize()
     const path = currentPathRef.current
 
-    if (!isDrawing || !path || !size || points.length === 0) return
-
-    // 重複バッチ検出: 前回最終点と今回最終点が同じなら二度呼びと判断してスキップ
-    if (lastCanvasCoordRef.current && points.length > 0) {
-      const lastPoint = points[points.length - 1]
-      if (lastPoint.x === lastCanvasCoordRef.current.x &&
-        lastPoint.y === lastCanvasCoordRef.current.y) {
-        return  // 重複バッチをスキップ
-      }
-    }
+    if (!path || !size || points.length === 0) return
 
     // 正規化座標に変換して path.points に追加
     points.forEach(p => {
@@ -367,7 +358,7 @@ export const useDrawing = (
   }
 
   const stopDrawing = () => {
-    if (isDrawing && currentPathRef.current) {
+    if (currentPathRef.current) {
       const newPath = currentPathRef.current
       const widthsBeforeEndpointTaper = newPath.points.map(point => point.width ?? options.width)
 

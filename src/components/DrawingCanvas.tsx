@@ -1,8 +1,10 @@
 ﻿import React, { useRef, useEffect } from 'react'
 import { useDrawing, doPathsIntersect } from '../hooks/useDrawing'
+import { useStrokeInput } from '../hooks/useStrokeInput'
 import { useEraser } from '../hooks/useEraser'
 import { DrawingPath, DrawingPoint, SelectionState, DrawingCanvasHandle, StrokeStyle } from '../types'
 import { drawAdditionalStrokeStyle } from '../rendering/drawAdditionalStrokeStyle'
+import { drawStationaryStroke } from '../rendering/drawStationaryStroke'
 
 // カーソルとアイコン用のSVG定義（icons.tsx準拠）
 const ICON_SVG = {
@@ -117,6 +119,10 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
         ctx.globalAlpha = strokeOpacity
         ctx.lineWidth = width * widthScale
 
+        if (drawStationaryStroke(ctx, points, width, { scaleX: bitmapScale.x, scaleY: bitmapScale.y, widthScale })) {
+            ctx.restore()
+            return
+        }
         if (points.length < 2) {
             ctx.restore()
             return
@@ -191,7 +197,6 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
 
     // 2本指タップ検出用
     const twoFingerTapStartRef = useRef<{ time: number, dist: number } | null>(null)
-    const lastPathTimeRef = useRef(0)
 
     // Pointer Events用：アクティブなポインタを追跡
     const activePointerIdRef = useRef<number | null>(null)
@@ -204,12 +209,6 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
         opacity,
         style: strokeStyle,
         onPathComplete: (path) => {
-            const now = Date.now()
-            if (now - lastPathTimeRef.current < 50) {
-                return
-            }
-            lastPathTimeRef.current = now
-
             // なげなわ選択が有効で、ループとして認識された場合はパスを追加しない
             if (onLassoComplete && onLassoComplete(path)) {
                 return
@@ -238,9 +237,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
     }
 
     const {
-        isDrawing: isCurrentlyDrawing,
         startDrawing: hookStartDrawing,
-        draw: hookContinueDrawing,
         stopDrawing: hookStopDrawing
     } = drawingHookResult
 
@@ -373,12 +370,9 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
                     widthScale,
                 }, isSelected ? '#3498db' : path.color)) {
                     // CopiCopi-specific styles share one renderer with the live preview and thumbnails.
-                } else if (pts.length === 1) {
-                    // 1点の場合は点を描画
-                    strokeCtx.beginPath()
-                    strokeCtx.arc(pts[0].x * canvas.width, pts[0].y * canvas.height, (pts[0].width ?? path.width) * widthScale / 2, 0, Math.PI * 2)
-                    strokeCtx.fillStyle = strokeCtx.strokeStyle
-                    strokeCtx.fill()
+                } else if (drawStationaryStroke(strokeCtx, pts, path.style === 'brush' ? (pts[0].width ?? path.width) : path.width,
+                    { scaleX: canvas.width, scaleY: canvas.height, widthScale })) {
+                    // Taps remain visible even when multiple samples have exactly the same position.
                 } else if (path.style === 'brush') {
                     for (let j = 1; j < pts.length; j++) {
                         strokeCtx.beginPath()
@@ -483,11 +477,6 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
     }
 
 
-    const handlePenUp = () => {
-        if (!isDrawing || !isInteractive) return
-        hookStopDrawing()
-    }
-
     // 消しゴム用ハンドラ
     const handleEraserDown = (e: React.MouseEvent | React.TouchEvent) => {
         if (!isErasing || !isInteractive) return
@@ -531,6 +520,29 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
         }
     }
 
+    const strokeInput = useStrokeInput({
+        enabled: interactionMode === 'full' && isDrawing && isInteractive && !hasSelection,
+        pointerTouchDrawing: true,
+        onStart: point => {
+            const canvas = canvasRef.current
+            if (!canvas) return false
+            const rect = canvas.getBoundingClientRect()
+            hookStartDrawing((point.clientX - rect.left) * canvas.width / rect.width,
+                (point.clientY - rect.top) * canvas.height / rect.height, point.pressure, point.time)
+        },
+        onMove: points => {
+            const canvas = canvasRef.current
+            if (!canvas || !('drawBatch' in drawingHookResult)) return
+            const rect = canvas.getBoundingClientRect()
+            drawingHookResult.drawBatch(points.map(point => ({
+                x: (point.clientX - rect.left) * canvas.width / rect.width,
+                y: (point.clientY - rect.top) * canvas.height / rect.height,
+                pressure: point.pressure, time: point.time,
+            })))
+        },
+        onEnd: () => hookStopDrawing(),
+    })
+
     // Pointer Event handlers (優先使用 - タッチとペンを正しく区別)
     const handlePointerDown = (e: React.PointerEvent) => {
         // タッチポインタを追跡（2本指タップUndo用）
@@ -553,7 +565,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
         }
 
         // 既にアクティブなポインタがある場合は無視（単一ポインタのみサポート）
-        if (activePointerIdRef.current !== null) {
+        if (activePointerIdRef.current !== null && !(isDrawing && !hasSelection && activePointerIdRef.current === e.pointerId)) {
             return
         }
 
@@ -579,8 +591,10 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
         }
 
         if (isDrawing) {
-            const coords = toCanvasCoordinates(e)
-            if (coords) hookStartDrawing(coords.x, coords.y, e.pointerType === 'pen' ? e.pressure : undefined, e.timeStamp)
+            if (!strokeInput.onPointerDown(e) && !strokeInput.isActive()) {
+                activePointerIdRef.current = null
+                if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+            }
         } else if (isErasing) {
             handleEraserDown(e)
         }
@@ -599,41 +613,8 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
             return
         }
 
-        if (isDrawing && isCurrentlyDrawing) {
-            const canvas = canvasRef.current
-            if (!canvas) return
-
-            const rect = canvas.getBoundingClientRect()
-
-            // Coalesced Events の取得（Apple Pencil の追従性向上）
-            let events: PointerEvent[] = []
-            if (typeof e.nativeEvent.getCoalescedEvents === 'function') {
-                events = e.nativeEvent.getCoalescedEvents()
-            } else {
-                events = [e.nativeEvent]
-            }
-
-            // すべての Coalesced Events から座標を抽出
-            const batchPoints: Array<{ x: number, y: number, pressure?: number, time?: number }> = []
-
-            for (const ev of events) {
-                // Canvas座標に変換
-                const scaleX = canvas.width / rect.width
-                const scaleY = canvas.height / rect.height
-                const x = (ev.clientX - rect.left) * scaleX
-                const y = (ev.clientY - rect.top) * scaleY
-                // mouse の pressure は固定値なので、筆圧としてはペン入力のみ使う。
-                batchPoints.push({ x, y, pressure: ev.pointerType === 'pen' ? ev.pressure : undefined, time: ev.timeStamp })
-            }
-
-            // Coalesced Events を一括処理
-            if (batchPoints.length > 0 && 'drawBatch' in drawingHookResult) {
-                drawingHookResult.drawBatch(batchPoints)
-            } else if (batchPoints.length > 0) {
-                // drawBatchがない場合はフォールバック
-                const coords = toCanvasCoordinates(e)
-                if (coords) hookContinueDrawing(coords.x, coords.y)
-            }
+        if (isDrawing) {
+            strokeInput.onPointerMove(e)
         } else if (isErasing) {
             handleEraserMove(e)
         }
@@ -664,6 +645,8 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
             return
         }
 
+        if (isDrawing && !hasSelection && !strokeInput.onPointerUp(e)) return
+
         // ポインタ追跡を終了
         activePointerIdRef.current = null
         if (e.currentTarget.hasPointerCapture(e.pointerId)) {
@@ -676,13 +659,13 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
             return
         }
 
-        if (isDrawing) handlePenUp()
-        else if (isErasing) handleEraserUp()
+        if (isErasing) handleEraserUp()
     }
 
     const handlePointerCancel = (e: React.PointerEvent) => {
         // ポインタがキャンセルされた場合（画面外に出た等）
         if (activePointerIdRef.current === e.pointerId) {
+            if (isDrawing && !hasSelection && !strokeInput.onPointerCancel(e)) return
             activePointerIdRef.current = null
             if (e.currentTarget.hasPointerCapture(e.pointerId)) {
                 e.currentTarget.releasePointerCapture(e.pointerId)
@@ -690,8 +673,6 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
 
             if (selectionState?.isDragging) {
                 onSelectionDragEnd?.()
-            } else if (isDrawing) {
-                handlePenUp()
             } else if (isErasing) {
                 handleEraserUp()
             }
@@ -723,10 +704,8 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
             return
         }
 
-        if (pts.length === 1) {
-            ctx.beginPath()
-            ctx.arc(pts[0].x * canvas.width, pts[0].y * canvas.height, (pts[0].width ?? previewPath.width) * widthScale / 2, 0, Math.PI * 2)
-            ctx.fill()
+        if (drawStationaryStroke(ctx, pts, previewPath.style === 'brush' ? (pts[0].width ?? previewPath.width) : previewPath.width,
+            { scaleX: canvas.width, scaleY: canvas.height, widthScale })) {
             return
         }
 
@@ -778,6 +757,9 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerCancel}
+            onLostPointerCapture={event => {
+                if (!event.currentTarget.hasPointerCapture(event.pointerId)) handlePointerCancel(event)
+            }}
           />
           <canvas
             ref={previewCanvasRef}

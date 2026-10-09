@@ -33,7 +33,7 @@ function harness(overrides = {}) {
     jsx: (type, props) => ({ type, props }),
     jsxs: (type, props) => ({ type, props }),
   }
-  const ctx = { save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {} }
+  const ctx = { save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, arc() {}, fill() {} }
   const canvas = {
     width: 1000, height: 500,
     getBoundingClientRect: () => ({ left: 10, top: 20, width: 500, height: 250 }),
@@ -57,8 +57,10 @@ function harness(overrides = {}) {
         if (id === 'react') return react
         if (id === 'react/jsx-runtime') return runtime
         if (id === '../hooks/useDrawing') return load('hooks/useDrawing.ts')
+        if (id === '../hooks/useStrokeInput') return load('hooks/useStrokeInput.ts')
         if (id === '../hooks/useEraser') return load('hooks/useEraser.ts')
         if (id === '../rendering/drawAdditionalStrokeStyle') return { drawAdditionalStrokeStyle: () => false }
+        if (id === '../rendering/drawStationaryStroke') return load('rendering/drawStationaryStroke.ts')
         throw new Error('Unexpected dependency: ' + id)
       },
     }, { filename })
@@ -86,12 +88,12 @@ function harness(overrides = {}) {
     pointer(kind, options = {}) {
       const nativeEvent = {
         pointerId: 1, pointerType: 'pen', clientX: 110, clientY: 70,
-        pressure: 0.5, timeStamp: now, buttons: kind === 'Up' ? 0 : 1,
+        pressure: 0.5, timeStamp: now, button: 0, buttons: kind === 'Up' ? 0 : 1,
         ...options,
       }
       if (options.coalesced) nativeEvent.getCoalescedEvents = () => options.coalesced.map(point => ({ ...nativeEvent, ...point }))
-      canvasProps['onPointer' + kind]({ ...nativeEvent, nativeEvent, currentTarget: canvas })
-      render()
+      canvasProps['onPointer' + kind]({ ...nativeEvent, nativeEvent, currentTarget: canvas, preventDefault() {} })
+      if (options.renderAfter !== false) render()
     },
   }
 }
@@ -109,6 +111,19 @@ for (const pointerType of ['pen', 'mouse', 'touch']) {
     assert.equal(app.added[0].color, '#123456')
   })
 }
+
+test('the JSX input handlers retain eight consecutive taps less than 50ms apart without a render', () => {
+  const app = harness()
+  for (let index = 0; index < 8; index++) {
+    const point = { clientX: 110 + index * 20, clientY: 70 + index * 5, renderAfter: false }
+    app.pointer('Down', point)
+    app.advance(1)
+    app.pointer('Up', point)
+    app.advance(1)
+  }
+  assert.equal(app.added.length, 8)
+  assert.equal(app.captures.size, 0)
+})
 
 test('coalesced pen points retain pressure-dependent brush width', () => {
   const stroke = (pointerType, pressure) => {

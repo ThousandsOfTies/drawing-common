@@ -1,4 +1,5 @@
 import type { DrawingPath } from '../types'
+import { drawStationaryStroke } from './drawStationaryStroke'
 
 export interface StrokeGeometry {
   scaleX: number
@@ -69,10 +70,8 @@ export const drawAdditionalStrokeStyle = (
     // The pale body and deterministic short grains produce a rough, stable texture.
     const inheritedAlpha = context.globalAlpha
     context.globalAlpha = inheritedAlpha * 0.5
-    if (points.length === 1) {
-      context.beginPath()
-      context.arc(points[0].x, points[0].y, width / 2, 0, Math.PI * 2)
-      context.fill()
+    if (drawStationaryStroke(context, points, width)) {
+      // The pale crayon body also covers stationary taps.
     } else {
       context.lineWidth = width * 0.9
       context.beginPath()
