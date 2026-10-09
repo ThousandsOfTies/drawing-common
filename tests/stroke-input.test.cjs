@@ -36,8 +36,8 @@ function harness(options = {}) {
       requestAnimationFrame: () => 1, cancelAnimationFrame() {},
       require: id => {
         if (id === 'react') return react
-        assert.equal(id, '../diagnostics/strokeInputDiagnostics')
-        return load('diagnostics/strokeInputDiagnostics')
+        assert.ok(['../diagnostics/strokeInputDiagnostics', '../input/isStrokeInputControl'].includes(id))
+        return load(id.slice(3))
       },
     })
     modules.set(name, exports)
@@ -70,8 +70,8 @@ function harness(options = {}) {
       if (values.coalesced) nativeEvent.getCoalescedEvents = () => values.coalesced.map(point => ({ ...nativeEvent, ...point }))
       return input['onPointer' + kind]({ ...nativeEvent, nativeEvent, currentTarget: target, preventDefault() {} })
     },
-    touch(kind, changed, touches = [], timeStamp = 0) {
-      return input['onTouch' + kind]({ changedTouches: changed, touches, timeStamp, cancelable: true, preventDefault() {} })
+    touch(kind, changed, touches = [], timeStamp = 0, values = {}) {
+      return input['onTouch' + kind]({ changedTouches: changed, touches, timeStamp, cancelable: true, preventDefault() {}, ...values })
     },
   }
 }
@@ -302,4 +302,26 @@ test('hover-only Pencil movement never starts a stroke', () => {
   app.pointer('Move', { timeStamp: 1, buttons: 0, pressure: 0.2 })
   assert.equal(app.input().isActive(), false)
   assert.equal(app.paths.length, 0)
+})
+
+test('Pencil input on controls inside a drawing surface stays native and cannot start an ink stroke', () => {
+  const listeners = new Map()
+  const surface = { addEventListener(type, handler) { listeners.set(type, handler) }, removeEventListener() {} }
+  const control = { closest: () => control }
+  const app = harness({ eventTargetRef: { current: surface } })
+  let prevented = false
+  listeners.get('touchstart')({ target: control, changedTouches: [touch(11)], cancelable: true,
+    preventDefault() { prevented = true } })
+  assert.equal(prevented, false, 'Pencil taps on a button or page slider must not suppress its native action')
+  assert.equal(app.touch('Start', [touch(11)], [touch(11)], 0, { target: control }), false)
+  assert.equal(app.pointer('Down', { timeStamp: 1, target: control }), false)
+  assert.equal(app.input().isActive(), false)
+  assert.equal(app.paths.length, 0)
+  app.pointer('Down', { timeStamp: 3 })
+  app.pointer('Move', { timeStamp: 4, clientX: 30 })
+  app.touch('Start', [touch(12, 100)], [touch(12, 100)], 5, { target: control })
+  app.pointer('Up', { timeStamp: 6, clientX: 100, target: control })
+  assert.equal(app.input().isActive(), false)
+  assert.equal(app.paths.length, 1)
+  assert.equal(app.paths[0].points.at(-1).x, 0.03, 'an orphaned stroke cannot connect to the control')
 })

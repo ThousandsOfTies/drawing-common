@@ -59,6 +59,7 @@ function harness(overrides = {}) {
         if (id === '../hooks/useDrawing') return load('hooks/useDrawing.ts')
         if (id === '../hooks/useStrokeInput') return load('hooks/useStrokeInput.ts')
         if (id === '../diagnostics/strokeInputDiagnostics') return load('diagnostics/strokeInputDiagnostics.ts')
+        if (id === '../input/isStrokeInputControl') return load('input/isStrokeInputControl.ts')
         if (id === '../hooks/useEraser') return load('hooks/useEraser.ts')
         if (id === '../rendering/drawAdditionalStrokeStyle') return { drawAdditionalStrokeStyle: () => false }
         if (id === '../rendering/drawStationaryStroke') return load('rendering/drawStationaryStroke.ts')

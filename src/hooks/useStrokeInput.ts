@@ -1,5 +1,6 @@
 import { useEffect, useRef, type PointerEvent, type TouchEvent } from 'react'
 import { isStrokeInputDiagnosticsEnabled, recordStrokeInputEvent, recordStrokeLifecycle, registerStrokeInputTarget } from '../diagnostics/strokeInputDiagnostics'
+import { isStrokeInputControl } from '../input/isStrokeInputControl'
 
 export interface StrokeInputPoint {
   clientX: number
@@ -164,6 +165,10 @@ export function useStrokeInput(options: Options) {
   })
 
   const onPointerDown = (event: PointerEvent) => {
+    if (isStrokeInputControl(event.target)) {
+      if (event.pointerType === 'pen' && sessionRef.current?.pointerType === 'pen') finish('cancel')
+      return false
+    }
     if ((event.pointerType === 'touch' && !optionsRef.current.pointerTouchDrawing) || event.button !== 0) return trace('pointerdown', event, false)
     const accepted = begin('pointer', event.pointerId, pointerPoint(event), event.currentTarget)
     if (accepted) event.preventDefault()
@@ -198,6 +203,10 @@ export function useStrokeInput(options: Options) {
   const onTouchStart = (event: TouchEvent) => {
     const changed = Array.from(event.changedTouches)
     const stylus = changed.find(isStylus)
+    if (isStrokeInputControl(event.target)) {
+      if (stylus && isPenActive()) finish('cancel')
+      return false
+    }
     // Pencil pointer events own the stroke; their companion Touch events cannot restart it.
     const pointerSession = sessionRef.current
     if (pointerSession?.source === 'pointer' && isPenActive()) {
@@ -220,6 +229,7 @@ export function useStrokeInput(options: Options) {
     return trace('touchstart', event, accepted)
   }
   const onTouchMove = (event: TouchEvent) => {
+    if (isStrokeInputControl(event.target)) return false
     if (isPenActive() && sessionRef.current?.source === 'pointer') return trace('touchmove', event, true)
     const session = sessionRef.current
     if (session?.source !== 'touch' || eventTime(event.timeStamp) < session.startedAt) return trace('touchmove', event, false)
@@ -254,7 +264,7 @@ export function useStrokeInput(options: Options) {
     if (!target) return
     const unregister = registerStrokeInputTarget(target, () => optionsRef.current.enabled !== false)
     const claimPencilContact = (event: globalThis.TouchEvent) => {
-      if (optionsRef.current.enabled === false) return
+      if (optionsRef.current.enabled === false || isStrokeInputControl(event.target)) return
       const hasPencil = isPenActive() || Array.from(event.changedTouches).some(isStylus)
       if (hasPencil && event.cancelable) event.preventDefault()
     }

@@ -1,3 +1,5 @@
+import { isStrokeInputControl } from '../input/isStrokeInputControl'
+
 type SummaryTouch = { identifier: number; clientX: number; clientY: number; force?: number; touchType?: string }
 type SummaryEvent = {
   timeStamp: number
@@ -68,6 +70,7 @@ export function recordStrokeInputEvent(
   phase: 'native' | 'handler', type: string, event: SummaryEvent, details: Record<string, unknown> = {},
 ) {
   if (!enabled) return
+  if (isStrokeInputControl(event.target)) return
   const drawingEnabled = phase === 'native' ? drawingSurfaceState(event.target) : undefined
   if (phase === 'native' && drawingEnabled === undefined) return
   if (phase === 'native' && type === 'pointerdown' && event.pointerType === 'pen') counts.penDown++

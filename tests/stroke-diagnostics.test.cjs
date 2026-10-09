@@ -11,6 +11,7 @@ function recorder(search = '?strokeDebug=1') {
     constructor(tagName = 'CANVAS', parentElement = null) {
       this.tagName = tagName; this.parentElement = parentElement; this.className = 'drawing-canvas'
     }
+    closest() { return this.tagName === 'BUTTON' ? this : this.parentElement?.closest() ?? null }
   }
   const window = {
     location: { search },
@@ -22,11 +23,17 @@ function recorder(search = '?strokeDebug=1') {
     },
   }
   const filename = path.join(__dirname, '../src/diagnostics/strokeInputDiagnostics.ts')
+  const inputControl = {}
+  const controlFile = path.join(__dirname, '../src/input/isStrokeInputControl.ts')
+  vm.runInNewContext(ts.transpileModule(fs.readFileSync(controlFile, 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText, { exports: inputControl }, { filename: controlFile })
   const code = ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText
   vm.runInNewContext(code, { exports, window, Element, URLSearchParams,
     navigator: { userAgent: 'test-browser' }, performance: { now: () => 100 },
+    require(id) { assert.equal(id, '../input/isStrokeInputControl'); return inputControl },
   }, { filename })
   return { api: exports, Element, listeners, removed,
     emit(type, target, values = {}) {
@@ -50,7 +57,7 @@ test('normal URLs leave the recorder inactive with no global event listeners', (
 
 test('received Pencil starts and accepted strokes are counted separately, excluding controls but reporting a disabled surface', () => {
   const app = recorder(), surface = new app.Element('DIV'), child = new app.Element('CANVAS', surface)
-  const button = new app.Element('BUTTON')
+  const button = new app.Element('BUTTON', surface)
   let enabled = true
   const unregister = app.api.registerStrokeInputTarget(surface, () => enabled)
   app.api.startStrokeInputDiagnostics()
