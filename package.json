@@ -15,7 +15,7 @@
     "dist"
   ],
   "scripts": {
-    "test": "node --test tests/zoom-pan.test.cjs tests/drawing-pointer.test.cjs tests/stroke-input.test.cjs tests/stroke-rendering.test.cjs tests/canvas-undo-history.test.cjs",
+    "test": "node --test tests/zoom-pan.test.cjs tests/drawing-pointer.test.cjs tests/stroke-input.test.cjs tests/stroke-diagnostics.test.cjs tests/stroke-rendering.test.cjs tests/canvas-undo-history.test.cjs",
     "build": "tsc",
     "dev": "tsc --watch",
     "clean": "rm -rf dist"

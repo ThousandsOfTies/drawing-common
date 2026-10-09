@@ -58,6 +58,7 @@ function harness(overrides = {}) {
         if (id === 'react/jsx-runtime') return runtime
         if (id === '../hooks/useDrawing') return load('hooks/useDrawing.ts')
         if (id === '../hooks/useStrokeInput') return load('hooks/useStrokeInput.ts')
+        if (id === '../diagnostics/strokeInputDiagnostics') return load('diagnostics/strokeInputDiagnostics.ts')
         if (id === '../hooks/useEraser') return load('hooks/useEraser.ts')
         if (id === '../rendering/drawAdditionalStrokeStyle') return { drawAdditionalStrokeStyle: () => false }
         if (id === '../rendering/drawStationaryStroke') return load('rendering/drawStationaryStroke.ts')
@@ -143,6 +144,22 @@ test('coalesced pen points retain pressure-dependent brush width', () => {
   assert.deepEqual(heavy.points.map(point => point.x), [0.2, 0.3, 0.4, 0.5, 0.6])
   assert.ok(heavy.points[2].width > light.points[2].width)
   assert.deepEqual(stroke('mouse', 0.2), stroke('mouse', 0.8), 'mouse pressure must not act as pen pressure')
+})
+
+test('the JSX wrapper accepts a new Pencil ID after a missing up and keeps the strokes separate', () => {
+  const app = harness()
+  app.pointer('Down', { pointerId: 7, renderAfter: false })
+  app.advance(1)
+  app.pointer('Move', { pointerId: 7, clientX: 160, renderAfter: false })
+  app.advance(1)
+  app.pointer('Down', { pointerId: 8, clientX: 310, renderAfter: false })
+  app.advance(1)
+  app.pointer('Move', { pointerId: 8, clientX: 360, renderAfter: false })
+  app.pointer('Up', { pointerId: 7, clientX: 160, renderAfter: false })
+  app.pointer('Up', { pointerId: 8, clientX: 360, renderAfter: false })
+  assert.equal(app.added.length, 2)
+  assert.deepEqual(app.added.map(stroke => stroke.points.map(point => point.x)), [[0.2, 0.3], [0.6, 0.7]])
+  assert.equal(app.captures.size, 0)
 })
 
 test('an unrelated pointer cannot move or end the active stroke', () => {

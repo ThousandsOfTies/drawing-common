@@ -4,6 +4,8 @@ export type { DrawingPath, DrawingPoint, DrawingConfig, DrawingHistory, ToolType
 // Hooks
 export { useDrawing, isScratchPattern, doPathsIntersect } from './hooks/useDrawing'
 export { useStrokeInput, type StrokeInputPoint } from './hooks/useStrokeInput'
+export { isStrokeInputDiagnosticsEnabled, startStrokeInputDiagnostics, stopStrokeInputDiagnostics,
+  clearStrokeInputDiagnostics, getStrokeInputDiagnosticsSummary, getStrokeInputDiagnosticsReport } from './diagnostics/strokeInputDiagnostics'
 export { useEraser } from './hooks/useEraser'
 export { useZoomPan } from './hooks/useZoomPan'
 export { useLassoSelection } from './hooks/useLassoSelection'

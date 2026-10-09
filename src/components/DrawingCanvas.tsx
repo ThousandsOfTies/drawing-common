@@ -521,6 +521,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
     }
 
     const strokeInput = useStrokeInput({
+        eventTargetRef: canvasRef,
         enabled: interactionMode === 'full' && isDrawing && isInteractive && !hasSelection,
         pointerTouchDrawing: true,
         onStart: point => {
@@ -564,8 +565,13 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
             return
         }
 
+        if (isDrawing && !hasSelection) {
+            if (strokeInput.onPointerDown(e)) activePointerIdRef.current = e.pointerId
+            return
+        }
+
         // 既にアクティブなポインタがある場合は無視（単一ポインタのみサポート）
-        if (activePointerIdRef.current !== null && !(isDrawing && !hasSelection && activePointerIdRef.current === e.pointerId)) {
+        if (activePointerIdRef.current !== null) {
             return
         }
 
@@ -590,12 +596,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
             return
         }
 
-        if (isDrawing) {
-            if (!strokeInput.onPointerDown(e) && !strokeInput.isActive()) {
-                activePointerIdRef.current = null
-                if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
-            }
-        } else if (isErasing) {
+        if (isErasing) {
             handleEraserDown(e)
         }
     }

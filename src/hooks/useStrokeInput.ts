@@ -1,4 +1,5 @@
 import { useEffect, useRef, type PointerEvent, type TouchEvent } from 'react'
+import { isStrokeInputDiagnosticsEnabled, recordStrokeInputEvent, recordStrokeLifecycle, registerStrokeInputTarget } from '../diagnostics/strokeInputDiagnostics'
 
 export interface StrokeInputPoint {
   clientX: number
@@ -10,6 +11,7 @@ export interface StrokeInputPoint {
 
 interface Options {
   enabled?: boolean
+  eventTargetRef?: { readonly current: HTMLElement | null }
   /** PDF finger gestures are handled by the viewport, while Pencil touch events remain a fallback. */
   touchDrawing?: boolean
   /** Standalone canvases can draw with touch pointers; viewports use their Touch gesture handlers. */
@@ -24,6 +26,7 @@ interface Session {
   id: number
   pointerType: string
   startedAt: number
+  startPoint: StrokeInputPoint
   latestTime: number
   hasMoveSample: boolean
   sampleKeys: Set<string>
@@ -45,6 +48,27 @@ export function useStrokeInput(options: Options) {
   const sessionRef = useRef<Session | null>(null)
   const completedAtRef = useRef(-Infinity)
 
+  const trace = (type: string, event: PointerEvent | TouchEvent, accepted: boolean) => {
+    if (isStrokeInputDiagnosticsEnabled()) {
+      const session = sessionRef.current
+      recordStrokeInputEvent('handler', type, event, { accepted, enabled: optionsRef.current.enabled !== false,
+        owner: session?.source, ownerId: session?.id, ownerStart: session?.startedAt,
+        completedAt: Number.isFinite(completedAtRef.current) ? completedAtRef.current : undefined,
+      })
+    }
+    return accepted
+  }
+
+  const capture = (session: Session, target?: Element) => {
+    if (!target) return
+    try {
+      target.setPointerCapture(session.id)
+      session.captureTarget = target
+    } catch {
+      // An already-cancelled native pointer cannot be captured; input can still end normally.
+    }
+  }
+
   const releaseCapture = (session: Session) => {
     const target = session.captureTarget
     if (target?.hasPointerCapture(session.id)) target.releasePointerCapture(session.id)
@@ -57,6 +81,8 @@ export function useStrokeInput(options: Options) {
     sessionRef.current = null
     completedAtRef.current = Math.max(completedAtRef.current, session.latestTime, time ?? session.latestTime)
     releaseCapture(session)
+    recordStrokeLifecycle('end', { source: session.source, id: session.id, reason,
+      inputTime: time, hasMoveSample: session.hasMoveSample })
     session.onEnd(reason)
     return true
   }
@@ -65,12 +91,27 @@ export function useStrokeInput(options: Options) {
     if (optionsRef.current.enabled === false || point.time < completedAtRef.current) return false
     const previous = sessionRef.current
     if (previous) {
-      if (previous.source !== source || previous.id !== id || point.time <= previous.latestTime) return false
+      if (source === 'pointer' && point.pointerType === 'pen' && previous.source === 'touch' && previous.pointerType === 'pen' &&
+        Math.round(point.clientX) === Math.round(previous.startPoint.clientX) &&
+        Math.round(point.clientY) === Math.round(previous.startPoint.clientY) &&
+        (point.time <= previous.latestTime || !previous.hasMoveSample)) {
+        // A Touch-first Pencil contact hands ownership to its Pointer event without starting twice.
+        previous.companionTouchId = previous.id
+        previous.source = 'pointer'
+        previous.id = id
+        previous.startedAt = Math.min(previous.startedAt, point.time)
+        capture(previous, target)
+        return true
+      }
+      const sameOwner = previous.source === source && previous.id === id
+      const nextPenContact = point.pointerType === 'pen' &&
+        (previous.pointerType === 'pen' || previous.source === 'touch')
+      if (point.time <= previous.latestTime || (!sameOwner && !nextPenContact)) return false
       // A new down after a missing up starts a separate stroke, never a connecting chord.
       finish('cancel')
     }
     const session: Session = {
-      source, id, pointerType: point.pointerType, startedAt: point.time,
+      source, id, pointerType: point.pointerType, startedAt: point.time, startPoint: point,
       latestTime: point.time, hasMoveSample: false, sampleKeys: new Set([sampleKey(point)]),
       onMove: optionsRef.current.onMove, onEnd: optionsRef.current.onEnd,
     }
@@ -79,14 +120,8 @@ export function useStrokeInput(options: Options) {
       sessionRef.current = null
       return false
     }
-    if (source === 'pointer' && target) {
-      try {
-        target.setPointerCapture(id)
-        session.captureTarget = target
-      } catch {
-        // An already-cancelled native pointer cannot be captured; input can still end normally.
-      }
-    }
+    recordStrokeLifecycle('start', { source, id, pointerType: point.pointerType, inputTime: point.time })
+    if (source === 'pointer') capture(session, target)
     return true
   }
 
@@ -129,32 +164,34 @@ export function useStrokeInput(options: Options) {
   })
 
   const onPointerDown = (event: PointerEvent) => {
-    if ((event.pointerType === 'touch' && !optionsRef.current.pointerTouchDrawing) || event.button !== 0) return false
+    if ((event.pointerType === 'touch' && !optionsRef.current.pointerTouchDrawing) || event.button !== 0) return trace('pointerdown', event, false)
     const accepted = begin('pointer', event.pointerId, pointerPoint(event), event.currentTarget)
     if (accepted) event.preventDefault()
-    return accepted
+    return trace('pointerdown', event, accepted)
   }
   const onPointerMove = (event: PointerEvent) => {
     const session = matches('pointer', event.pointerId, eventTime(event.timeStamp))
-    if (!session) return false
+    if (!session) return trace('pointermove', event, false)
     const native = event.nativeEvent
     const coalesced = native.getCoalescedEvents?.() ?? []
     move(session, (coalesced.length ? coalesced : [native]).map(pointerPoint))
-    return true
+    return trace('pointermove', event, true)
   }
   const onPointerUp = (event: PointerEvent) => {
     const session = matches('pointer', event.pointerId, eventTime(event.timeStamp))
-    if (!session) return false
+    if (!session) return trace('pointerup', event, false)
     // Keep a final movement even when no pointermove was delivered for a short stroke.
     move(session, [pointerPoint(event)], true)
-    return finish('up', eventTime(event.timeStamp))
+    return trace('pointerup', event, finish('up', eventTime(event.timeStamp)))
   }
   const onPointerCancel = (event: PointerEvent) => {
-    return matches('pointer', event.pointerId, eventTime(event.timeStamp)) ? finish('cancel', eventTime(event.timeStamp)) : false
+    return trace('pointercancel', event,
+      matches('pointer', event.pointerId, eventTime(event.timeStamp)) ? finish('cancel', eventTime(event.timeStamp)) : false)
   }
   const onLostPointerCapture = (event: PointerEvent) => {
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) return false
-    return onPointerCancel(event)
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) return trace('lostpointercapture', event, false)
+    return trace('lostpointercapture', event,
+      matches('pointer', event.pointerId, eventTime(event.timeStamp)) ? finish('cancel', eventTime(event.timeStamp)) : false)
   }
 
   const isPenActive = () => sessionRef.current?.pointerType === 'pen'
@@ -164,27 +201,32 @@ export function useStrokeInput(options: Options) {
     // Pencil pointer events own the stroke; their companion Touch events cannot restart it.
     const pointerSession = sessionRef.current
     if (pointerSession?.source === 'pointer' && isPenActive()) {
+      if (stylus && pointerSession.companionTouchId !== undefined && stylus.identifier !== pointerSession.companionTouchId &&
+        eventTime(event.timeStamp) > pointerSession.latestTime) {
+        // A new Pencil Touch can recover even when the preceding contact sent no Pointer up.
+        finish('cancel')
+        const accepted = begin('touch', stylus.identifier, touchPoint(stylus, event.timeStamp))
+        return trace('touchstart', event, accepted)
+      }
       if (stylus && pointerSession.companionTouchId === undefined && eventTime(event.timeStamp) >= pointerSession.startedAt) {
         pointerSession.companionTouchId = stylus.identifier
       }
-      return true
+      return trace('touchstart', event, true)
     }
-    if (sessionRef.current?.source === 'pointer' && stylus) return true
+    if (sessionRef.current?.source === 'pointer' && stylus) return trace('touchstart', event, true)
     const touch = stylus ?? (optionsRef.current.touchDrawing !== false && event.touches.length === 1 ? changed[0] : undefined)
-    if (!touch) return false
+    if (!touch) return trace('touchstart', event, false)
     const accepted = begin('touch', touch.identifier, touchPoint(touch, event.timeStamp))
-    if (accepted && event.cancelable) event.preventDefault()
-    return accepted
+    return trace('touchstart', event, accepted)
   }
   const onTouchMove = (event: TouchEvent) => {
-    if (isPenActive() && sessionRef.current?.source === 'pointer') return true
+    if (isPenActive() && sessionRef.current?.source === 'pointer') return trace('touchmove', event, true)
     const session = sessionRef.current
-    if (session?.source !== 'touch' || eventTime(event.timeStamp) < session.startedAt) return false
+    if (session?.source !== 'touch' || eventTime(event.timeStamp) < session.startedAt) return trace('touchmove', event, false)
     const touch = Array.from(event.touches).find(touch => touch.identifier === session.id)
-    if (!touch) return false
+    if (!touch) return trace('touchmove', event, false)
     move(session, [touchPoint(touch, event.timeStamp)])
-    if (event.cancelable) event.preventDefault()
-    return true
+    return trace('touchmove', event, true)
   }
   const endTouch = (event: TouchEvent, reason: 'up' | 'cancel') => {
     const changed = Array.from(event.changedTouches)
@@ -207,6 +249,25 @@ export function useStrokeInput(options: Options) {
   useEffect(() => {
     if (options.enabled === false) finish('cancel')
   }, [options.enabled])
+  useEffect(() => {
+    const target = options.eventTargetRef?.current
+    if (!target) return
+    const unregister = registerStrokeInputTarget(target, () => optionsRef.current.enabled !== false)
+    const claimPencilContact = (event: globalThis.TouchEvent) => {
+      if (optionsRef.current.enabled === false) return
+      const hasPencil = isPenActive() || Array.from(event.changedTouches).some(isStylus)
+      if (hasPencil && event.cancelable) event.preventDefault()
+    }
+    // React delegates Touch listeners as passive. Claim Pencil contacts using a non-passive
+    // listener on the drawing surface, while leaving finger gestures to the viewport.
+    target.addEventListener('touchstart', claimPencilContact, { passive: false })
+    target.addEventListener('touchmove', claimPencilContact, { passive: false })
+    return () => {
+      unregister()
+      target.removeEventListener('touchstart', claimPencilContact)
+      target.removeEventListener('touchmove', claimPencilContact)
+    }
+  }, [options.eventTargetRef])
   useEffect(() => () => {
     const session = sessionRef.current
     sessionRef.current = null
@@ -216,8 +277,8 @@ export function useStrokeInput(options: Options) {
   return {
     onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onLostPointerCapture,
     onTouchStart, onTouchMove,
-    onTouchEnd: (event: TouchEvent) => endTouch(event, 'up'),
-    onTouchCancel: (event: TouchEvent) => endTouch(event, 'cancel'),
+    onTouchEnd: (event: TouchEvent) => trace('touchend', event, endTouch(event, 'up')),
+    onTouchCancel: (event: TouchEvent) => trace('touchcancel', event, endTouch(event, 'cancel')),
     cancel: () => finish('cancel'),
     isActive: () => sessionRef.current !== null,
     isPenActive,
