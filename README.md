@@ -6,6 +6,7 @@ TutoTuto・DoriDori・CopiCopiで使う、Canvas描画の共通React・TypeScrip
 
 - ペン・消しゴム・投げ縄選択、描画キャンバスとポインター操作。
 - ズーム・パン・ピンチの座標計算。
+- 高精細画面向けのCanvas解像度調整。紙のサイズ・保存する座標と表示用の画素数を分離する。
 - 画素の差分を利用する `CanvasUndoHistory` と、描画に対応する状態のUndo。
 - PDF・解答画面の入力を扱う `useStrokeInput`。ペン・マウス・Touchの識別、開始と終了、重複する入力点を共通で管理する。
 
@@ -22,6 +23,8 @@ import { DrawingCanvas, CanvasUndoHistory } from '@thousands-of-ties/drawing-com
 ```
 
 公開APIは [src/index.ts](src/index.ts)、引数や型は各実装を参照してください。
+
+解答画面は `resizeCanvasForDisplay` で表示用のCanvasを準備し、座標や画像出力には `getCanvasLogicalSize` の紙サイズを使います。表示用の画素数には上限を設けています。
 
 ## 開発・検証
 
