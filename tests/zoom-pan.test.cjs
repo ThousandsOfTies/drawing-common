@@ -1,100 +1,6 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const fs = require('node:fs')
-const path = require('node:path')
-const vm = require('node:vm')
-const ts = require('typescript')
-
-class Surface {
-  constructor(parent = null) { this.parent = parent; this.listeners = new Map() }
-  contains(target) {
-    for (let node = target; node; node = node.parent) if (node === this) return true
-    return false
-  }
-  addEventListener(type, listener, options) {
-    if (type === 'wheel') assert.equal(options.passive, false)
-    if (!this.listeners.has(type)) this.listeners.set(type, new Set())
-    this.listeners.get(type).add(listener)
-  }
-  removeEventListener(type, listener) { this.listeners.get(type)?.delete(listener) }
-  dispatch(type, event) {
-    for (let node = this; node; node = node.parent) {
-      for (const listener of [...(node.listeners.get(type) ?? [])]) listener(event)
-      if (event.propagationStopped) break
-    }
-  }
-}
-
-// Run the actual hook with React's persistent state/effect semantics and a DOM
-// event tree. In particular, the selection overlay is a sibling of the pane.
-function harness({ width = 1200, height = 1000, pageWidth = 600, pageHeight = 800, left = 0, shared = false } = {}) {
-  let cursor = 0, effects = [], result
-  const cells = []
-  const same = (a, b) => a && b && a.length === b.length && a.every((value, index) => Object.is(value, b[index]))
-  const react = {
-    useState(initial) {
-      const index = cursor++
-      cells[index] ??= {
-        value: initial,
-        setter(value) { cells[index].value = typeof value === 'function' ? value(cells[index].value) : value },
-      }
-      return [cells[index].value, cells[index].setter]
-    },
-    useRef(value) { const index = cursor++; cells[index] ??= { current: value }; return cells[index] },
-    useCallback(callback, deps) {
-      const index = cursor++
-      if (!same(cells[index]?.deps, deps)) cells[index] = { callback, deps }
-      return cells[index].callback
-    },
-    useEffect(callback, deps) {
-      const index = cursor++
-      if (!same(cells[index]?.deps, deps)) effects.push(() => {
-        cells[index]?.cleanup?.()
-        cells[index] = { deps, cleanup: callback() }
-      })
-    },
-  }
-  const document = new Surface(), window = new Surface()
-  const surface = new Surface(document)
-  const pane = Object.assign(new Surface(surface), {
-    clientWidth: width, clientHeight: height,
-    getBoundingClientRect: () => ({ left, right: left + width, top: 50, bottom: 50 + height, width, height }),
-  })
-  const canvas = Object.assign(new Surface(pane), {
-    clientWidth: pageWidth, clientHeight: pageHeight, width: pageWidth * 2, height: pageHeight * 2,
-  })
-  const overlay = new Surface(surface), outside = new Surface(document)
-  const containerRef = { current: pane }, canvasRef = { current: canvas }, eventTargetRef = { current: surface }
-  const code = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../src/hooks/useZoomPan.ts'), 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-  }).outputText
-  const exports = {}
-  vm.runInNewContext(code, { exports, require: id => { assert.equal(id, 'react'); return react }, document, window })
-  function render() {
-    cursor = 0
-    result = exports.useZoomPan(containerRef, 0.1, undefined, canvasRef, shared ? { wheelEventTargetRef: eventTargetRef } : undefined)
-    for (const effect of effects.splice(0)) effect()
-    return result
-  }
-  render()
-  return {
-    pane, canvas, surface, document,
-    view: () => render(),
-    fit() { result.fitToScreen(pageWidth, pageHeight); return render() },
-    wheel(deltaY, { target = 'canvas', ctrlKey = true, metaKey = false, deltaX = 0, clientX = left + width / 2, clientY = 50 + height / 2, renderAfter = true } = {}) {
-      const event = {
-        target: { canvas, overlay, outside, pane }[target], deltaY, deltaX, clientX, clientY, ctrlKey, metaKey,
-        defaultPrevented: false, propagationStopped: false,
-        preventDefault() { this.defaultPrevented = true },
-        stopPropagation() { this.propagationStopped = true },
-      }
-      event.target.dispatch('wheel', event)
-      if (renderAfter) render()
-      return event
-    },
-    dispose() { for (const cell of cells) cell?.cleanup?.() },
-  }
-}
+const { harness } = require('./helpers/zoom-pan-harness.cjs')
 
 const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-10, `${actual} != ${expected}`)
 
@@ -148,14 +54,15 @@ test('wheel, pinch and programmatic zoom share a fit limit independent of bitmap
   const minimum = app.fit().zoom
   near(minimum, 0.45)
   for (let gesture = 0; gesture < 20; gesture++) {
-    app.view().setZoom(app.view().clampZoom(0.001))
+    app.view().setZoom(0.001)
     near(app.view().zoom, minimum)
     app.wheel(100)
     near(app.view().zoom, minimum)
   }
   app.canvas.width *= 4; app.canvas.height *= 4
   near(app.view().getMinimumZoom(), minimum)
-  near(app.view().clampZoom(0.001), minimum)
+  app.view().setZoom(0.001)
+  near(app.view().zoom, minimum)
   app.wheel(-100)
   assert.ok(app.view().zoom > minimum)
 })
@@ -231,4 +138,81 @@ test('unmount removes wheel handlers from the shared surface and document', () =
   assert.equal(app.surface.listeners.get('wheel')?.size ?? 0, 0)
   assert.equal(app.document.listeners.get('wheel')?.size ?? 0, 0)
   assert.equal(app.wheel(-100, { target: 'overlay', renderAfter: false }).defaultPrevented, false)
+})
+
+test('every public viewport command enforces the floor without caller-side clamping', () => {
+  for (const command of [
+    view => view.setZoom(0.001),
+    view => view.setZoom(previous => previous / 100),
+    view => view.zoomAt(0.001, { x: 260, y: 190 }),
+    view => view.restoreViewport({ zoom: 0.001, panOffset: { x: 0, y: 0 } }, { width: 600, height: 800 }),
+  ]) {
+    const app = harness({ width: 520, height: 380 })
+    const floor = app.fit().zoom
+    const retained = app.view()
+    for (let repeat = 0; repeat < 20; repeat++) command(retained)
+    near(app.view().zoom, floor)
+    retained.setZoom(100)
+    near(app.view().zoom, 5)
+    retained.setZoom(previous => previous / 1.2)
+    assert.ok(app.view().zoom < 5)
+  }
+})
+
+test('direct and overlay pinch commands use the bounded zoom when projecting the anchor', () => {
+  const app = harness({ width: 520, height: 380, left: 510 })
+  const floor = app.fit().zoom
+  const center = { x: 770, y: 240 }
+  for (let repeat = 0; repeat < 20; repeat++) {
+    const before = app.view().getViewport()
+    const gesture = { startZoom: before.zoom, startPan: before.panOffset, startDist: 100, startCenter: center }
+    const content = { x: (260 - before.panOffset.x) / before.zoom, y: (190 - before.panOffset.y) / before.zoom }
+    app.view().applyPinch(gesture, { distance: 0.001, center })
+    const after = app.view().getViewport()
+    near(after.zoom, floor)
+    near((260 - after.panOffset.x) / after.zoom, content.x)
+    near((190 - after.panOffset.y) / after.zoom, content.y)
+  }
+  const before = app.view().getViewport()
+  app.view().applyPinch({ startZoom: before.zoom, startPan: before.panOffset, startDist: 100, startCenter: center },
+    { distance: 200, center })
+  near(app.view().zoom, floor * 2)
+})
+
+test('a page turn validates the destination paper instead of the old page bitmap', () => {
+  const app = harness({ width: 520, height: 380 })
+  app.fit()
+  app.view().restoreViewport({ zoom: 0.15, panOffset: { x: 170, y: 10 } }, { width: 1200, height: 2400 })
+  near(app.view().zoom, 0.15)
+  near(app.view().panOffset.x, 170)
+  near(app.view().panOffset.y, 10)
+  // The old portrait page would have rejected the destination's smaller fit.
+  assert.equal(app.canvas.clientWidth, 600)
+  assert.equal(app.canvas.clientHeight, 800)
+})
+
+test('fit, reset and rapid functional updates publish one coherent viewport immediately', () => {
+  const app = harness({ width: 520, height: 380 })
+  const command = app.view()
+  command.fitToScreen(600, 800)
+  near(command.getViewport().zoom, 0.45)
+  for (let repeat = 0; repeat < 4; repeat++) command.setZoom(previous => previous + 0.1)
+  near(command.getViewport().zoom, 0.85)
+  command.resetZoom()
+  near(command.getViewport().zoom, 1)
+  const copy = command.getViewport()
+  copy.panOffset.x = -999
+  near(command.getViewport().panOffset.x, 0)
+})
+
+test('invalid zoom and pinch data leave the coherent viewport intact', () => {
+  const app = harness()
+  app.fit()
+  const before = app.view().getViewport()
+  for (const zoom of [NaN, Infinity, -Infinity]) app.view().setZoom(zoom)
+  for (const [startDist, distance] of [[0, 100], [100, NaN], [100, Infinity]]) {
+    app.view().applyPinch({ startZoom: before.zoom, startPan: before.panOffset, startDist,
+      startCenter: { x: 200, y: 200 } }, { distance, center: { x: 200, y: 200 } })
+  }
+  assert.deepEqual(app.view().getViewport(), before)
 })
