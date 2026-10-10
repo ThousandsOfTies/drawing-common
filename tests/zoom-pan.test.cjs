@@ -98,13 +98,15 @@ function harness({ width = 1200, height = 1000, pageWidth = 600, pageHeight = 80
 
 const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-10, `${actual} != ${expected}`)
 
-test('Ctrl-wheel shrinks from the initial fit and can return to the same size', () => {
+test('Ctrl-wheel stops at the fitted page size and can zoom in again', () => {
   const app = harness()
   const initial = app.fit().zoom
   const event = app.wheel(100)
   assert.equal(event.defaultPrevented, true)
-  assert.ok(app.view().zoom < initial, 'zoom-out must not enlarge the page to a borderless fit')
+  near(app.view().zoom, initial)
   app.wheel(-100)
+  assert.ok(app.view().zoom > initial)
+  app.wheel(100)
   near(app.view().zoom, initial)
 })
 
@@ -121,22 +123,52 @@ test('a physically small PDF does not raise the minimum above the maximum', () =
   const app = harness({ pageWidth: 60, pageHeight: 80 })
   const initial = app.fit().zoom
   app.wheel(100)
-  assert.ok(app.view().zoom < initial)
+  near(app.view().zoom, initial)
   app.wheel(-100)
+  assert.ok(app.view().zoom > initial)
+  app.wheel(100)
   near(app.view().zoom, initial)
 })
 
 test('zoom-out and zoom-in remain available at both wheel limits', () => {
   const app = harness()
-  app.fit()
+  const minimum = app.fit().zoom
   for (let step = 0; step < 60; step++) app.wheel(-100)
   near(app.view().zoom, 5)
   app.wheel(100)
   assert.ok(app.view().zoom < 5)
   for (let step = 0; step < 60; step++) app.wheel(100)
-  near(app.view().zoom, 0.1)
+  near(app.view().zoom, minimum)
   app.wheel(-100)
-  assert.ok(app.view().zoom > 0.1)
+  assert.ok(app.view().zoom > minimum)
+})
+
+test('wheel, pinch and programmatic zoom share a fit limit independent of bitmap resolution', () => {
+  const app = harness({ width: 520, height: 380 })
+  const minimum = app.fit().zoom
+  near(minimum, 0.45)
+  for (let gesture = 0; gesture < 20; gesture++) {
+    app.view().setZoom(app.view().clampZoom(0.001))
+    near(app.view().zoom, minimum)
+    app.wheel(100)
+    near(app.view().zoom, minimum)
+  }
+  app.canvas.width *= 4; app.canvas.height *= 4
+  near(app.view().getMinimumZoom(), minimum)
+  near(app.view().clampZoom(0.001), minimum)
+  app.wheel(-100)
+  assert.ok(app.view().zoom > minimum)
+})
+
+test('a larger viewport does not turn zoom-out into enlargement', () => {
+  const app = harness()
+  const initial = app.fit().zoom
+  app.pane.clientHeight = 1600
+  assert.ok(app.view().getFitToScreenZoom() > initial)
+  app.wheel(100)
+  near(app.view().zoom, initial)
+  app.wheel(-100)
+  assert.ok(app.view().zoom > initial)
 })
 
 test('a shared selection overlay routes Ctrl-wheel only to the pane under the cursor', () => {

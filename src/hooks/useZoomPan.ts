@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 
 const FIT_MARGIN = 10
 const MAX_FIT_ZOOM = 2
-const MAX_WHEEL_ZOOM = 5
+const MAX_ZOOM = 5
 
 interface ZoomPanOptions {
   /** Includes sibling input overlays; the cursor still determines the active pane. */
@@ -209,13 +209,23 @@ export const useZoomPan = (
     const contentHeight = canvas.clientHeight || canvas.height
     if (contentWidth === 0 || contentHeight === 0) return minFitZoom
 
-    // Keep the pinch fit limit consistent with the initial fit, including its margin.
+    // Use logical paper dimensions so display resolution cannot move the zoom limit.
     const scaleX = (container.clientWidth - FIT_MARGIN * 2) / contentWidth
     const scaleY = (container.clientHeight - FIT_MARGIN * 2) / contentHeight
 
     return Math.max(minFitZoom, Math.min(MAX_FIT_ZOOM, scaleX, scaleY))
   }, [containerRef, canvasRef, minFitZoom])
 
+  const getMinimumZoom = useCallback(() => {
+    // After a resize, zoom-out must not enlarge a page that was already below
+    // the new fit size. Further shrinking stops at its current size instead.
+    return Math.min(viewportRef.current.zoom, getFitToScreenZoom())
+  }, [getFitToScreenZoom])
+
+  const clampZoom = useCallback((value: number) => {
+    if (!Number.isFinite(value)) return viewportRef.current.zoom
+    return Math.min(MAX_ZOOM, Math.max(getMinimumZoom(), value))
+  }, [getMinimumZoom])
 
   // Ctrl+ホイールでズーム（マウスカーソルを中心に）
   useEffect(() => {
@@ -236,9 +246,7 @@ export const useZoomPan = (
       const delta = e.deltaY > 0 ? -0.1 : 0.1
       const { zoom: oldZoom, panOffset: oldPanOffset } = viewportRef.current
 
-      // Manual wheel zoom can shrink below fit. A fit-derived minimum could
-      // enlarge on zoom-out, or exceed the maximum for small PDF page sizes.
-      const newZoom = Math.min(MAX_WHEEL_ZOOM, Math.max(minFitZoom, oldZoom + delta))
+      const newZoom = clampZoom(oldZoom + delta)
       const cursorX = e.clientX - containerRect.left
       const cursorY = e.clientY - containerRect.top
       setLastWheelCursor({ x: e.clientX, y: e.clientY })
@@ -262,7 +270,7 @@ export const useZoomPan = (
     return () => {
       document.removeEventListener('wheel', handleWheel)
     }
-  }, [containerRef, canvasRef, minFitZoom, wheelEventTargetRef, applyPanLimit])
+  }, [containerRef, wheelEventTargetRef, applyPanLimit, clampZoom])
 
   // Ctrlキーの状態を追跡
   useEffect(() => {
@@ -304,6 +312,8 @@ export const useZoomPan = (
     lastWheelCursor,
     applyPanLimit,
     fitToScreen,
-    getFitToScreenZoom // 追加エクスポート
+    getFitToScreenZoom,
+    getMinimumZoom,
+    clampZoom,
   }
 }
