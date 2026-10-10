@@ -1,4 +1,17 @@
 export type Point = { x: number; y: number }
+
+export function viewportCursorPosition(
+  container: Pick<HTMLElement, 'getBoundingClientRect' | 'clientLeft' | 'clientTop' | 'scrollLeft' | 'scrollTop'> | null,
+  clientX: number, clientY: number, diameter: number,
+) {
+  if (!container) return null
+  const bounds = container.getBoundingClientRect()
+  return {
+    x: clientX - bounds.left - container.clientLeft + container.scrollLeft,
+    y: clientY - bounds.top - container.clientTop + container.scrollTop,
+    diameter,
+  }
+}
 export type Viewport = { zoom: number; panOffset: Point }
 export type PinchGesture = { startZoom: number; startPan: Point; startDist: number; startCenter: Point }
 

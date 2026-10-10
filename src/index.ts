@@ -17,4 +17,4 @@ export { drawAdditionalStrokeStyle } from './rendering/drawAdditionalStrokeStyle
 export { drawStationaryStroke } from './rendering/drawStationaryStroke'
 export { resizeCanvasForDisplay, getCanvasLogicalSize } from './rendering/canvasResolution'
 export { CanvasUndoHistory } from './history/CanvasUndoHistory'
-export { zoomAtPoint, touchPair, pinchViewport, type Point, type Viewport, type PinchGesture } from './geometry/viewport'
+export { zoomAtPoint, touchPair, pinchViewport, viewportCursorPosition, type Point, type Viewport, type PinchGesture } from './geometry/viewport'

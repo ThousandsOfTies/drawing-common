@@ -26,7 +26,7 @@ class Surface {
 
 // Run the actual hook with React's persistent state/effect semantics and a DOM
 // event tree. In particular, the selection overlay is a sibling of the pane.
-function harness({ width = 1200, height = 1000, pageWidth = 600, pageHeight = 800, left = 0, shared = false } = {}) {
+function harness({ width = 1200, height = 1000, pageWidth = 600, pageHeight = 800, left = 0, shared = false, zoomOptions = {} } = {}) {
   let cursor = 0, effects = [], result
   const cells = []
   const same = (a, b) => a && b && a.length === b.length && a.every((value, index) => Object.is(value, b[index]))
@@ -78,7 +78,8 @@ function harness({ width = 1200, height = 1000, pageWidth = 600, pageHeight = 80
   }, document, window })
   function render() {
     cursor = 0
-    result = exports.useZoomPan(containerRef, 0.1, undefined, canvasRef, shared ? { wheelEventTargetRef: eventTargetRef } : undefined)
+    result = exports.useZoomPan(containerRef, 0.1, undefined, canvasRef,
+      { ...(shared ? { wheelEventTargetRef: eventTargetRef } : {}), ...zoomOptions })
     for (const effect of effects.splice(0)) effect()
     return result
   }

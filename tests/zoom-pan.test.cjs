@@ -237,3 +237,25 @@ test('screen fit cannot depend on high-resolution or hidden PDF backing pixels',
   near(blank.view().zoom, 360 / 595)
   near(blank.view().panOffset.x, 10)
 })
+
+test('answer zoom, restoration, pinch and immediate pan use one writer with fixed limits and free movement', () => {
+  const app = harness({ width: 1200, height: 1000,
+    zoomOptions: { minimumZoom: 0.2, constrainPan: false, nativeWheel: false } })
+  const command = app.view()
+  command.restoreViewport({ zoom: 1, panOffset: { x: 80, y: -120 } })
+  command.startPanningAt(100, 100)
+  command.panTo(130, 150) // Before React's next render.
+  assert.deepEqual({ ...command.getViewport().panOffset }, { x: 110, y: -70 })
+  command.stopPanning()
+  command.panTo(500, 500)
+  assert.deepEqual({ ...command.getViewport().panOffset }, { x: 110, y: -70 })
+  command.setZoom(0.001)
+  assert.equal(command.getViewport().zoom, 0.2)
+  command.restoreViewport({ zoom: 100, panOffset: { x: 10000, y: -10000 } })
+  assert.equal(command.getViewport().zoom, 5)
+  assert.deepEqual({ ...command.getViewport().panOffset }, { x: 10000, y: -10000 })
+  command.applyPinch({ startZoom: 1, startPan: { x: 0, y: 0 }, startDist: 100,
+    startCenter: { x: 100, y: 100 } }, { distance: 1, center: { x: 100, y: 100 } })
+  assert.equal(command.getViewport().zoom, 0.2)
+  assert.equal(app.wheel(-100).defaultPrevented, false)
+})

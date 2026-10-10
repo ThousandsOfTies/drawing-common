@@ -11,6 +11,9 @@ type PanValue = Point | ((zoom: number, previous: Viewport) => Point)
 interface ZoomPanOptions {
   /** Includes sibling input overlays; the cursor still determines the active pane. */
   wheelEventTargetRef?: React.RefObject<HTMLElement>
+  minimumZoom?: number
+  constrainPan?: boolean
+  nativeWheel?: boolean
 }
 
 export const useZoomPan = (
@@ -24,11 +27,14 @@ export const useZoomPan = (
   const { zoom, panOffset } = viewport
   const viewportRef = useRef(viewport)
   const [isPanning, setIsPanning] = useState(false)
-  const [panStart, setPanStart] = useState({ x: 0, y: 0 })
+  const panStartRef = useRef<Point | null>(null)
   const [overscroll, setOverscroll] = useState({ x: 0, y: 0 })
   const [isCtrlPressed, setIsCtrlPressed] = useState(false)
   const [lastWheelCursor, setLastWheelCursor] = useState<Point | null>(null)
   const wheelEventTargetRef = options?.wheelEventTargetRef
+  const minimumZoom = options?.minimumZoom
+  const constrainPan = options?.constrainPan !== false
+  const nativeWheel = options?.nativeWheel !== false
 
   const getPaperSize = useCallback((): PaperSize | undefined => {
     const canvas = canvasRef?.current
@@ -38,6 +44,7 @@ export const useZoomPan = (
   }, [canvasRef])
 
   const applyPanLimit = useCallback((offset: Point, currentZoom?: number, paperSize?: PaperSize): Point => {
+    if (!constrainPan) return offset
     const container = containerRef.current
     const paper = paperSize ?? getPaperSize()
     if (!container || !paper) return offset
@@ -48,7 +55,7 @@ export const useZoomPan = (
       x: Math.max(Math.min(0, remainingWidth), Math.min(Math.max(0, remainingWidth), offset.x)),
       y: Math.max(Math.min(0, remainingHeight), Math.min(Math.max(0, remainingHeight), offset.y)),
     }
-  }, [containerRef, getPaperSize])
+  }, [containerRef, getPaperSize, constrainPan])
 
   const getFitToScreenZoom = useCallback((paperSize?: PaperSize) => {
     const container = containerRef.current
@@ -61,8 +68,8 @@ export const useZoomPan = (
 
   const getMinimumZoom = useCallback(() => {
     // Resizing must not turn a zoom-out operation into an enlargement.
-    return Math.min(viewportRef.current.zoom, getFitToScreenZoom())
-  }, [getFitToScreenZoom])
+    return minimumZoom ?? Math.min(viewportRef.current.zoom, getFitToScreenZoom())
+  }, [getFitToScreenZoom, minimumZoom])
 
   // This is the only viewport writer. Every command, including fitting and page
   // restoration, resolves its limits here before projecting the pan position.
@@ -72,7 +79,7 @@ export const useZoomPan = (
     const requestedZoom = typeof zoomValue === 'function' ? zoomValue(previous.zoom) : zoomValue
     if (!Number.isFinite(requestedZoom)) return previous
     const minimum = updateOptions?.fit ? minFitZoom
-      : Math.min(previous.zoom, getFitToScreenZoom(updateOptions?.paperSize))
+      : minimumZoom ?? Math.min(previous.zoom, getFitToScreenZoom(updateOptions?.paperSize))
     const maximum = updateOptions?.fit ? MAX_FIT_ZOOM : MAX_ZOOM
     const nextZoom = Math.min(maximum, Math.max(minimum, requestedZoom))
     const requestedPan = typeof panValue === 'function' ? panValue(nextZoom, previous)
@@ -87,7 +94,7 @@ export const useZoomPan = (
       setOverscroll({ x: 0, y: (requestedPan.y - nextPan.y) * (updateOptions?.overscrollResistance ?? 0) })
     }
     return next
-  }, [applyPanLimit, getFitToScreenZoom, minFitZoom])
+  }, [applyPanLimit, getFitToScreenZoom, minFitZoom, minimumZoom])
 
   // Public setters are commands, never raw React state setters.
   const setZoom = useCallback((value: ZoomValue) => updateViewport(value), [updateViewport])
@@ -97,7 +104,7 @@ export const useZoomPan = (
   const getViewport = useCallback(() => ({
     zoom: viewportRef.current.zoom, panOffset: { ...viewportRef.current.panOffset },
   }), [])
-  const restoreViewport = useCallback((value: Viewport, paperSize: PaperSize) =>
+  const restoreViewport = useCallback((value: Viewport, paperSize?: PaperSize) =>
     updateViewport(value.zoom, value.panOffset, { paperSize }), [updateViewport])
 
   const zoomAt = useCallback((value: ZoomValue, anchor: Point) =>
@@ -145,23 +152,28 @@ export const useZoomPan = (
     else updateViewport(1, { x: 0, y: 0 })
   }
 
-  const startPanning = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!e.ctrlKey && !e.metaKey) return
-    e.preventDefault()
+  const startPanningAt = (clientX: number, clientY: number) => {
     setIsPanning(true)
     const currentPan = viewportRef.current.panOffset
-    setPanStart({ x: e.clientX - currentPan.x, y: e.clientY - currentPan.y })
+    panStartRef.current = { x: clientX - currentPan.x, y: clientY - currentPan.y }
   }
-
-  const doPanning = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isPanning) return
-    const offset = { x: e.clientX - panStart.x, y: e.clientY - panStart.y }
+  const panTo = (clientX: number, clientY: number) => {
+    const start = panStartRef.current
+    if (!start) return
+    const offset = { x: clientX - start.x, y: clientY - start.y }
     const next = setPanOffset(offset)
     setOverscroll({ x: (offset.x - next.panOffset.x) * 0.4, y: (offset.y - next.panOffset.y) * 0.4 })
   }
-  const stopPanning = () => setIsPanning(false)
+  const stopPanning = () => { panStartRef.current = null; setIsPanning(false) }
+  const startPanning = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!e.ctrlKey && !e.metaKey) return
+    e.preventDefault()
+    startPanningAt(e.clientX, e.clientY)
+  }
+  const doPanning = (e: React.MouseEvent<HTMLDivElement>) => panTo(e.clientX, e.clientY)
 
   useEffect(() => {
+    if (!nativeWheel) return
     const handleWheel = (e: WheelEvent) => {
       if (e.defaultPrevented || (!e.ctrlKey && !e.metaKey) || !Number.isFinite(e.deltaY) || e.deltaY === 0) return
       const container = containerRef.current
@@ -180,7 +192,7 @@ export const useZoomPan = (
     // Page-turn listeners run first so Ctrl-wheel can cancel an unfinished turn.
     document.addEventListener('wheel', handleWheel, { passive: false })
     return () => document.removeEventListener('wheel', handleWheel)
-  }, [containerRef, wheelEventTargetRef, zoomAt])
+  }, [containerRef, wheelEventTargetRef, zoomAt, nativeWheel])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -201,6 +213,6 @@ export const useZoomPan = (
     zoom, setZoom, isPanning, panOffset, setPanOffset, overscroll, setOverscroll,
     resetOverscroll, isCtrlPressed, startPanning, doPanning, stopPanning, resetZoom,
     lastWheelCursor, applyPanLimit, fitToScreen, getFitToScreenZoom, getMinimumZoom,
-    getViewport, restoreViewport, zoomAt, applyPinch,
+    getViewport, restoreViewport, zoomAt, applyPinch, startPanningAt, panTo,
   }
 }
