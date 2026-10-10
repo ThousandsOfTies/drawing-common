@@ -12,6 +12,7 @@ export { useLassoSelection } from './hooks/useLassoSelection'
 
 // Components
 export { DrawingCanvas, type DrawingCanvasProps } from './components/DrawingCanvas'
+export { DrawingViewport } from './components/DrawingViewport'
 export { drawAdditionalStrokeStyle } from './rendering/drawAdditionalStrokeStyle'
 export { drawStationaryStroke } from './rendering/drawStationaryStroke'
 export { resizeCanvasForDisplay, getCanvasLogicalSize } from './rendering/canvasResolution'

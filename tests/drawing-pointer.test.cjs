@@ -63,6 +63,9 @@ function harness(overrides = {}) {
         if (id === '../hooks/useEraser') return load('hooks/useEraser.ts')
         if (id === '../rendering/drawAdditionalStrokeStyle') return { drawAdditionalStrokeStyle: () => false }
         if (id === '../rendering/drawStationaryStroke') return load('rendering/drawStationaryStroke.ts')
+        if (id === '../rendering/drawDrawingPath') return load('rendering/drawDrawingPath.ts')
+        if (id === './drawAdditionalStrokeStyle') return { drawAdditionalStrokeStyle: () => false }
+        if (id === './drawStationaryStroke') return load('rendering/drawStationaryStroke.ts')
         throw new Error('Unexpected dependency: ' + id)
       },
     }, { filename })

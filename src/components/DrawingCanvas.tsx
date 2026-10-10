@@ -1,9 +1,9 @@
-﻿import React, { useRef, useEffect } from 'react'
+import React, { useRef, useEffect } from 'react'
 import { useDrawing, doPathsIntersect } from '../hooks/useDrawing'
 import { useStrokeInput } from '../hooks/useStrokeInput'
 import { useEraser } from '../hooks/useEraser'
 import { DrawingPath, DrawingPoint, SelectionState, DrawingCanvasHandle, StrokeStyle } from '../types'
-import { drawAdditionalStrokeStyle } from '../rendering/drawAdditionalStrokeStyle'
+import { drawDrawingPath } from '../rendering/drawDrawingPath'
 import { drawStationaryStroke } from '../rendering/drawStationaryStroke'
 
 // カーソルとアイコン用のSVG定義（icons.tsx準拠）
@@ -324,94 +324,10 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
             const isSelected = selectionState?.selectedIndices.includes(i)
             const pathOpacity = isSelected ? 1 : (path.opacity ?? 1)
             if (path.points.length === 0) continue
-            // 半透明ストロークは不透明なオフスクリーン層に描いてから一度だけ合成する。
-            // これにより、同じストローク内の線分・丸い端部が重なっても濃くならない。
-            const strokeLayer = pathOpacity < 1
-                ? (transparencyLayerRef.current ?? (transparencyLayerRef.current = document.createElement('canvas')))
-                : null
-            const pathWidths = path.points.map(point => point.width ?? path.width)
-            const maximumPathWidth = Math.max(path.width, ...pathWidths) * widthScale
-            const xs = path.points.map(point => point.x * canvas.width)
-            const ys = path.points.map(point => point.y * canvas.height)
-            const padding = maximumPathWidth / 2 + 2
-            const layerX = Math.max(0, Math.floor(Math.min(...xs) - padding))
-            const layerY = Math.max(0, Math.floor(Math.min(...ys) - padding))
-            const layerRight = Math.min(canvas.width, Math.ceil(Math.max(...xs) + padding))
-            const layerBottom = Math.min(canvas.height, Math.ceil(Math.max(...ys) + padding))
-            const layerWidth = Math.max(1, layerRight - layerX)
-            const layerHeight = Math.max(1, layerBottom - layerY)
-            if (strokeLayer) {
-                // ページ全面ではなく、このストロークが占める矩形だけを確保する。
-                // iPadでは全面Canvasをストローク本数分クリア・合成するとメモリ帯域を
-                // 大きく消費するため、半透明ブラシの消去・Undo時に特に効く。
-                if (strokeLayer.width !== layerWidth || strokeLayer.height !== layerHeight) {
-                    strokeLayer.width = layerWidth
-                    strokeLayer.height = layerHeight
-                } else {
-                    strokeLayer.getContext('2d')?.clearRect(0, 0, layerWidth, layerHeight)
-                }
-            }
-            const strokeCtx = strokeLayer?.getContext('2d') ?? ctx
-            if (strokeLayer) {
-                strokeCtx.save()
-                strokeCtx.translate(-layerX, -layerY)
-            }
-            strokeCtx.lineCap = 'round'
-            strokeCtx.lineJoin = 'round'
-            strokeCtx.strokeStyle = isSelected ? '#3498db' : path.color
-            strokeCtx.globalAlpha = 1
-            strokeCtx.lineWidth = path.width * widthScale
-
-            if (path.points.length > 0) {
-                const pts = path.points
-                if (drawAdditionalStrokeStyle(strokeCtx, path, {
-                    scaleX: canvas.width,
-                    scaleY: canvas.height,
-                    widthScale,
-                }, isSelected ? '#3498db' : path.color)) {
-                    // CopiCopi-specific styles share one renderer with the live preview and thumbnails.
-                } else if (drawStationaryStroke(strokeCtx, pts, path.style === 'brush' ? (pts[0].width ?? path.width) : path.width,
-                    { scaleX: canvas.width, scaleY: canvas.height, widthScale })) {
-                    // Taps remain visible even when multiple samples have exactly the same position.
-                } else if (path.style === 'brush') {
-                    for (let j = 1; j < pts.length; j++) {
-                        strokeCtx.beginPath()
-                        strokeCtx.lineWidth = ((pts[j - 1].width ?? path.width) + (pts[j].width ?? path.width)) * widthScale / 2
-                        strokeCtx.moveTo(pts[j - 1].x * canvas.width, pts[j - 1].y * canvas.height)
-                        strokeCtx.lineTo(pts[j].x * canvas.width, pts[j].y * canvas.height)
-                        strokeCtx.stroke()
-                    }
-                } else {
-                    // 3点以上：quadraticCurveToで滑らかなカーブ
-                    strokeCtx.beginPath()
-                    strokeCtx.moveTo(pts[0].x * canvas.width, pts[0].y * canvas.height)
-
-                    for (let j = 1; j < pts.length - 1; j++) {
-                        const p1 = pts[j]
-                        const p2 = pts[j + 1]
-                        // 制御点は現在の点、終点は次の点との中間点
-                        const cpX = p1.x * canvas.width
-                        const cpY = p1.y * canvas.height
-                        const endX = (p1.x + p2.x) / 2 * canvas.width
-                        const endY = (p1.y + p2.y) / 2 * canvas.height
-                        strokeCtx.quadraticCurveTo(cpX, cpY, endX, endY)
-                    }
-                    // 最後の点まで描画
-                    const lastPt = pts[pts.length - 1]
-                    strokeCtx.lineTo(lastPt.x * canvas.width, lastPt.y * canvas.height)
-                    strokeCtx.stroke()
-                }
-            }
-
-            if (strokeLayer) {
-                strokeCtx.restore()
-                ctx.save()
-                ctx.globalAlpha = pathOpacity
-                ctx.drawImage(strokeLayer, layerX, layerY)
-                ctx.restore()
-            }
+            drawDrawingPath(ctx, path, { scaleX: canvas.width, scaleY: canvas.height, widthScale }, {
+                color: isSelected ? '#3498db' : path.color, opacity: pathOpacity, layer: transparencyLayerRef,
+            })
         }
-
         ctx.globalAlpha = 1
 
         // ラッソストロークを破線で描画（選択モード中のみ）
@@ -690,54 +606,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasHandle, DrawingCanvas
         ctx.clearRect(0, 0, canvas.width, canvas.height)
         if (!previewPath?.points.length) return
 
-        const pts = previewPath.points
-        ctx.lineCap = 'round'
-        ctx.lineJoin = 'round'
-        ctx.strokeStyle = previewPath.color
-        ctx.fillStyle = previewPath.color
-        ctx.globalAlpha = 1
-
-        if (drawAdditionalStrokeStyle(ctx, previewPath, {
-            scaleX: canvas.width,
-            scaleY: canvas.height,
-            widthScale,
-        })) {
-            return
-        }
-
-        if (drawStationaryStroke(ctx, pts, previewPath.style === 'brush' ? (pts[0].width ?? previewPath.width) : previewPath.width,
-            { scaleX: canvas.width, scaleY: canvas.height, widthScale })) {
-            return
-        }
-
-        if (previewPath.style === 'brush') {
-            for (let i = 1; i < pts.length; i++) {
-                ctx.beginPath()
-                ctx.lineWidth = ((pts[i - 1].width ?? previewPath.width) + (pts[i].width ?? previewPath.width)) * widthScale / 2
-                ctx.moveTo(pts[i - 1].x * canvas.width, pts[i - 1].y * canvas.height)
-                ctx.lineTo(pts[i].x * canvas.width, pts[i].y * canvas.height)
-                ctx.stroke()
-            }
-        } else {
-            ctx.lineWidth = previewPath.width * widthScale
-            ctx.beginPath()
-            ctx.moveTo(pts[0].x * canvas.width, pts[0].y * canvas.height)
-            // 確定後の再描画と同じ二次ベジェ補間をリアルタイム表示にも使う。
-            // 入力点を単純連結していたため、描画中だけ折れ線に見えていた。
-            for (let i = 1; i < pts.length - 1; i++) {
-                const current = pts[i]
-                const next = pts[i + 1]
-                ctx.quadraticCurveTo(
-                    current.x * canvas.width,
-                    current.y * canvas.height,
-                    (current.x + next.x) / 2 * canvas.width,
-                    (current.y + next.y) / 2 * canvas.height
-                )
-            }
-            const last = pts[pts.length - 1]
-            ctx.lineTo(last.x * canvas.width, last.y * canvas.height)
-            ctx.stroke()
-        }
+        drawDrawingPath(ctx, previewPath, { scaleX: canvas.width, scaleY: canvas.height, widthScale }, { opacity: 1 })
     }, [previewPath, width, height, coordinateWidth, coordinateHeight])
 
     return (
