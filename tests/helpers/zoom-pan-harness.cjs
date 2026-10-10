@@ -86,7 +86,7 @@ function harness({ width = 1200, height = 1000, pageWidth = 600, pageHeight = 80
   return {
     pane, canvas, surface, document,
     view: () => render(),
-    fit() { result.fitToScreen(pageWidth, pageHeight); return render() },
+    fit() { result.fitToScreen(); return render() },
     wheel(deltaY, { target = 'canvas', ctrlKey = true, metaKey = false, deltaX = 0, clientX = left + width / 2, clientY = 50 + height / 2, renderAfter = true } = {}) {
       const event = {
         target: { canvas, overlay, outside, pane }[target], deltaY, deltaX, clientX, clientY, ctrlKey, metaKey,

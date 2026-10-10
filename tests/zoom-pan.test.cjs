@@ -194,7 +194,7 @@ test('a page turn validates the destination paper instead of the old page bitmap
 test('fit, reset and rapid functional updates publish one coherent viewport immediately', () => {
   const app = harness({ width: 520, height: 380 })
   const command = app.view()
-  command.fitToScreen(600, 800)
+  command.fitToScreen()
   near(command.getViewport().zoom, 0.45)
   for (let repeat = 0; repeat < 4; repeat++) command.setZoom(previous => previous + 0.1)
   near(command.getViewport().zoom, 0.85)
@@ -215,4 +215,25 @@ test('invalid zoom and pinch data leave the coherent viewport intact', () => {
       startCenter: { x: 200, y: 200 } }, { distance, center: { x: 200, y: 200 } })
   }
   assert.deepEqual(app.view().getViewport(), before)
+})
+
+test('screen fit cannot depend on high-resolution or hidden PDF backing pixels', () => {
+  for (const bitmapScale of [1, 3, 8]) {
+    const app = harness({ width: 520, height: 380 })
+    app.canvas.width = 600 * bitmapScale; app.canvas.height = 800 * bitmapScale
+    app.view().fitToScreen()
+    near(app.view().zoom, 0.45)
+    near(app.view().panOffset.x, 125)
+    near(app.view().panOffset.y, 10)
+    app.view().setZoom(3)
+    app.view().fitToScreen()
+    near(app.view().zoom, 0.45)
+  }
+  const blank = harness({ width: 520, height: 380, pageWidth: 842, pageHeight: 595 })
+  blank.canvas.width = 1; blank.canvas.height = 1
+  blank.view().fitToScreen()
+  near(blank.view().zoom, 500 / 842)
+  blank.view().fitToScreen(undefined, { fitToHeight: true, alignLeft: true })
+  near(blank.view().zoom, 360 / 595)
+  near(blank.view().panOffset.x, 10)
 })

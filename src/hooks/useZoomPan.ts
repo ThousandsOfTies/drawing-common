@@ -119,10 +119,14 @@ export const useZoomPan = (
 
   const resetOverscroll = useCallback(() => setOverscroll({ x: 0, y: 0 }), [])
 
-  const fitToScreen = useCallback((contentWidth: number, contentHeight: number,
-    overrideContainerHeight?: number, fitOptions?: { fitToHeight?: boolean; alignLeft?: boolean }) => {
+  const fitToScreen = useCallback((overrideContainerHeight?: number,
+    fitOptions?: { fitToHeight?: boolean; alignLeft?: boolean }) => {
     const container = containerRef.current
-    if (!container) return
+    // Fitting owns its geometry too: no caller can substitute backing pixels
+    // for the logical paper dimensions (including a hidden 1x1 PDF bitmap).
+    const paper = getPaperSize()
+    if (!container || !paper) return
+    const { width: contentWidth, height: contentHeight } = paper
     const containerW = container.clientWidth
     const containerH = overrideContainerHeight ?? container.clientHeight
     const availableW = containerW - FIT_MARGIN * 2
@@ -133,8 +137,8 @@ export const useZoomPan = (
     return updateViewport(requestedZoom, resolvedZoom => ({
       x: fitOptions?.alignLeft ? FIT_MARGIN : (containerW - contentWidth * resolvedZoom) / 2,
       y: (containerH - contentHeight * resolvedZoom) / 2,
-    }), { paperSize: { width: contentWidth, height: contentHeight }, fit: true })
-  }, [containerRef, updateViewport])
+    }), { paperSize: paper, fit: true })
+  }, [containerRef, getPaperSize, updateViewport])
 
   const resetZoom = () => {
     if (onResetToFit) onResetToFit()
